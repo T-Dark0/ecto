@@ -1,0 +1,12 @@
+[package]
+name = "ecto_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+logos = "0.15.0"
+ecto_macros = { version = "0.1.0", path = "../macros" }
+strum = { version = "0.26.3", features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
