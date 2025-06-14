@@ -8,6 +8,7 @@ logos = "0.15.0"
 ecto_macros = { version = "0.1.0", path = "../macros" }
 strum = { version = "0.26.3", features = ["derive"] }
 itertools = "0.14.0"
+typed-arena = "2.0.2"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

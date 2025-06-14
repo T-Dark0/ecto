@@ -92,10 +92,8 @@ fn parse_fn_for_op(mut context: Context<impl Hooks>) -> Option<Parsed<OpDef>> {
     loop {
         let tok = context.peek();
         {
-            let mut context = context
-                .reborrow()
-                .set_skip(skip_newline)
-                .add_stop(stop_on_fn_arm_start);
+            let mut context =
+                context.reborrow().set_skip(skip_newline).add_stop(stop_on_fn_arm_start);
             match tok.kind {
                 TokenKind::Op => {
                     let def = parse_op_def(context.reborrow());
@@ -154,7 +152,7 @@ fn parse_op_parts(context: Context<impl Hooks>) -> Parsed<OpParts> {
 fn parse_op_argument(mut context: Context<impl Hooks>) -> Parsed<OpPart> {
     start("parse_op_argument");
     let underscore = context.next();
-    let out = Parsed::valid(OpPart::Argument, underscore.span);
+    let out = Parsed::valid(underscore.span, OpPart::Argument);
     end("parse_op_argument");
     out
 }
@@ -165,7 +163,7 @@ fn parse_op_lazy_argument(mut context: Context<impl Hooks>) -> Parsed<OpPart> {
     let out = match next_tok.kind {
         TokenKind::Underscore => {
             context.skip();
-            Parsed::valid(OpPart::LazyArgument, backslash.span.until(next_tok.span))
+            Parsed::valid(backslash.span.until(next_tok.span), OpPart::LazyArgument)
         }
         _ => {
             context.error(backslash.span, ErrorKind::LazyBeforeNonArg);
@@ -178,7 +176,7 @@ fn parse_op_lazy_argument(mut context: Context<impl Hooks>) -> Parsed<OpPart> {
 fn parse_op_name_part(mut context: Context<impl Hooks>) -> Parsed<OpPart> {
     start("parse_op_name_part");
     let literal = context.next();
-    let out = Parsed::valid(OpPart::Literal, literal.span);
+    let out = Parsed::valid(literal.span, OpPart::Literal);
     end("parse_op_name_part");
     out
 }
@@ -194,11 +192,11 @@ fn parse_op_star(
     };
     let make_variadic = |part| {
         Parsed::valid(
-            OpPart::Variadic(Parsed::valid(
-                OpParts(vec![Parsed::valid(part, prev_tok.span)]),
-                prev_tok.span,
-            )),
             prev_tok.span.until(star.span),
+            OpPart::Variadic(Parsed::valid(
+                prev_tok.span,
+                OpParts(vec![Parsed::valid(prev_tok.span, part)]),
+            )),
         )
     };
     let out = match prev_tok.outcome {
@@ -260,11 +258,11 @@ fn parse_op_binding(context: Context<impl Hooks>) -> Parsed<OpBinding> {
         let arrow = match tok.kind {
             TokenKind::LeftArrow => {
                 context.skip();
-                Parsed::valid(OpArrow::Left, tok.span)
+                Parsed::valid(tok.span, OpArrow::Left)
             }
             TokenKind::RightArrow => {
                 context.skip();
-                Parsed::valid(OpArrow::Right, tok.span)
+                Parsed::valid(tok.span, OpArrow::Right)
             }
             TokenKind::Identifier => {
                 let arrow_span = context.last_span().until_exclusive(tok.span);

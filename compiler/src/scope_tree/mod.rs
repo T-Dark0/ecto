@@ -14,6 +14,9 @@ pub struct Span {
     pub len: u16,
 }
 impl Span {
+    pub fn new(start: u32, len: u16) -> Self {
+        Self { start, len }
+    }
     pub fn new_empty(start: u32) -> Self {
         Self { start, len: 0 }
     }
