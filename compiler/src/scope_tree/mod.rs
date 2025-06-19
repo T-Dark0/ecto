@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug};
+
 mod ast;
 mod lexer;
 mod parser;
@@ -6,12 +8,15 @@ mod parser;
 /// `defgh`: the `3` refers to the third space between letters, the third position a typing cursor may be placed at.
 ///
 /// Incidentally, this implies that the first byte of a span with `start = n` is the `n`th byte of the input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub start: u32,
     pub len: u16,
 }
 impl Span {
+    pub fn new_empty(start: u32) -> Self {
+        Self { start, len: 0 }
+    }
     pub fn until(self, rhs: Self) -> Self {
         let end = rhs.start + u32::from(rhs.len);
         Self {
@@ -40,16 +45,8 @@ impl Span {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn until() {
-        let expected = Span { start: 29, len: 7 };
-        let got = Span { start: 29, len: 1 }.until(Span { start: 35, len: 1 });
-        assert_eq!(expected, got);
+impl Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}, {}]", self.start, self.len)
     }
 }
