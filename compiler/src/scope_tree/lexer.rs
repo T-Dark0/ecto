@@ -61,13 +61,18 @@ impl Debug for Token {
 }
 
 pub struct Lexed {
-    pub kinds: Vec<TokenKind>,
-    pub spans: Vec<Span>,
+    kinds: Vec<TokenKind>,
+    spans: Vec<Span>,
 }
 #[derive(Clone, Copy)]
 pub struct LexedSlice<'a> {
-    pub kinds: &'a [TokenKind],
-    pub spans: &'a [Span],
+    kinds: &'a [TokenKind],
+    spans: &'a [Span],
+}
+#[derive(Clone, Copy)]
+pub struct LexedRef<'a> {
+    kind: &'a TokenKind,
+    span: &'a Span,
 }
 impl Lexed {
     pub fn as_slice(&self) -> LexedSlice<'_> {
@@ -75,6 +80,39 @@ impl Lexed {
             kinds: &self.kinds,
             spans: &self.spans,
         }
+    }
+}
+impl<'a> LexedSlice<'a> {
+    pub fn kinds(self) -> &'a [TokenKind] {
+        self.kinds
+    }
+    pub fn strip_prefix(self, prefix: &[TokenKind]) -> Option<Self> {
+        let kinds = self.kinds.strip_prefix(prefix)?;
+        let spans = self.spans.get((self.spans.len() - kinds.len())..)?;
+        Some(Self { kinds, spans })
+    }
+    pub fn take_first(&mut self) -> Option<LexedRef<'a>> {
+        match *self {
+            Self {
+                kinds: [kind, kinds @ ..],
+                spans: [span, spans @ ..],
+            } => {
+                *self = Self { kinds, spans };
+                Some(LexedRef { kind, span })
+            }
+            _ => None,
+        }
+    }
+    pub fn len(self) -> usize {
+        self.kinds.len()
+    }
+}
+impl<'a> LexedRef<'a> {
+    pub fn kind(self) -> &'a TokenKind {
+        self.kind
+    }
+    pub fn span(self) -> &'a Span {
+        self.span
     }
 }
 

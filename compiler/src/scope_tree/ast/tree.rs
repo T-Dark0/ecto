@@ -1,6 +1,4 @@
-use std::fmt::{self, Debug};
-
-use super::Span;
+use crate::scope_tree::Span;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Scope {
@@ -82,13 +80,3 @@ impl<T> Parsed<T> {
         matches!(self.outcome, Outcome::Error)
     }
 }
-/*
-impl<T: Debug> Debug for Parsed<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.outcome {
-            Outcome::Valid(valid) => write!(f, "({:?}, {:?})", self.span, valid),
-            Outcome::Error => write!(f, "({:?}, {{error}})", self.span),
-        }
-    }
-}
-*/

@@ -72,12 +72,12 @@ fn parse_use(mut context: Context<impl Hooks>) -> Parsed<UseStmt> {
             }
             path.push(ident)
         }
+        let newline = parse_token(context.reborrow(), TokenKind::Semicolon);
+        if newline.is_error() {
+            context.error(newline.span, ErrorKind::MissingSemiAfterUse)
+        }
         Outcome::Valid(UseStmt { path })
     });
-    let newline = parse_token(context.reborrow(), TokenKind::Semicolon);
-    if newline.is_error() {
-        context.error(newline.span, ErrorKind::MissingSemiAfterUse)
-    }
     end("parse_use");
     out
 }
@@ -104,8 +104,8 @@ fn parse_fn_for_op(mut context: Context<impl Hooks>) -> Option<Parsed<OpDef>> {
                         None => op_def = Some(def),
                     }
                 }
-                TokenKind::Colon => skip_fn_arm(context),
-                TokenKind::Equals => skip_fn_arm(context),
+                TokenKind::Colon => exhaust(context),
+                TokenKind::Equals => exhaust(context),
                 TokenKind::Eof => break,
                 _ => {}
             }
@@ -120,6 +120,7 @@ fn parse_op_def(context: Context<impl Hooks>) -> Parsed<OpDef> {
     let out = spanning(context, |mut context| {
         context.skip();
         let parts = parse_op_parts(context.reborrow().add_stop(stop_on_semicolon));
+        parse_token(context.reborrow(), TokenKind::Semicolon);
         let bindings = parse_op_bindings(context);
         Outcome::Valid(OpDef { parts, bindings })
     });
@@ -252,7 +253,7 @@ fn parse_op_bindings(context: Context<impl Hooks>) -> Parsed<OpBindings> {
     out
 }
 fn parse_op_binding(context: Context<impl Hooks>) -> Parsed<OpBinding> {
-    end("parse_op_binding");
+    start("parse_op_binding");
     let out = spanning(context, |mut context| {
         let lhs = parse_ident(context.reborrow());
         let tok = context.peek();
@@ -266,7 +267,7 @@ fn parse_op_binding(context: Context<impl Hooks>) -> Parsed<OpBinding> {
                 Parsed::valid(OpArrow::Right, tok.span)
             }
             TokenKind::Identifier => {
-                let arrow_span = context.state.last_span.until_exclusive(tok.span);
+                let arrow_span = context.last_span().until_exclusive(tok.span);
                 context.error(arrow_span, ErrorKind::ExpectedArrow);
                 Parsed::error(arrow_span)
             }
@@ -278,22 +279,28 @@ fn parse_op_binding(context: Context<impl Hooks>) -> Parsed<OpBinding> {
         let rhs = parse_ident(context.reborrow());
         Outcome::Valid(OpBinding { lhs, arrow, rhs })
     });
-    start("parse_op_binding");
+    end("parse_op_binding");
     out
 }
-fn skip_fn_arm(context: Context<impl Hooks>) {
-    todo!()
+fn exhaust(mut context: Context<impl Hooks>) {
+    start("exhaust");
+    loop {
+        match context.next().kind {
+            TokenKind::OpenParen => exhaust(context.reborrow().set_stop(stop_on_close_paren)),
+            TokenKind::Eof => break,
+            _ => {}
+        }
+    }
+    context.set_stop(stop_never).skip();
+    end("exhaust");
 }
 
-fn parse_scope(context: Context<impl Hooks>) -> Parsed<Scope> {
+fn parse_scope(mut context: Context<impl Hooks>) -> Parsed<Scope> {
     start("parse_scope");
     let out = spanning(context, |mut context| {
         context.skip();
         let contents = parse_scope_contents(context.reborrow().set_stop(stop_on_close_paren));
-        let close_paren = parse_token(context.reborrow(), TokenKind::CloseParen);
-        if close_paren.is_error() {
-            context.error(close_paren.span, ErrorKind::UnclosedScope);
-        }
+        context.set_stop(stop_never).skip();
         contents.outcome
     });
     end("parse_scope");
@@ -323,7 +330,7 @@ where
 {
     let first_span = context.peek().span;
     let outcome = f(context.reborrow());
-    let last_span = context.state.last_span;
+    let last_span = context.last_span();
     let span = if last_span.start < first_span.start {
         last_span.until_exclusive(first_span)
     } else {
@@ -333,26 +340,24 @@ where
 }
 
 fn stop_on_close_paren(tokens: &[TokenKind]) -> bool {
-    tokens.starts_with(&[TokenKind::CloseParen])
+    tokens.first().copied() == Some(TokenKind::CloseParen)
 }
 fn stop_on_semicolon(tokens: &[TokenKind]) -> bool {
-    tokens.starts_with(&[TokenKind::Semicolon])
+    tokens.first().copied() == Some(TokenKind::Semicolon)
 }
 fn stop_on_fn_arm_start(tokens: &[TokenKind]) -> bool {
-    if let Some(rest) = tokens.strip_prefix(&[TokenKind::NewLine]) {
-        if [TokenKind::Op, TokenKind::Colon, TokenKind::Equals]
-            .into_iter()
-            .any(|t| rest.starts_with(&[t]))
-        {
-            return true;
-        }
-    }
-    return false;
+    let Some(tokens) = tokens.strip_prefix(&[TokenKind::NewLine]) else {
+        return false;
+    };
+    let Some(first) = tokens.first() else {
+        return false;
+    };
+    [TokenKind::Op, TokenKind::Colon, TokenKind::Comma].contains(first)
 }
 fn stop_on_comma(tokens: &[TokenKind]) -> bool {
-    tokens.starts_with(&[TokenKind::Comma])
+    tokens.first().copied() == Some(TokenKind::Comma)
 }
-fn stop_never(tokens: &[TokenKind]) -> bool {
+fn stop_never(_: &[TokenKind]) -> bool {
     false
 }
 
