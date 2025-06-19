@@ -1,10 +1,28 @@
+use super::formatting_node::{
+    to_formatting_node, FormattingArena, FormattingNode, ToFormattingNode,
+};
+use crate::scope_tree::ast::Parsed;
 use std::marker::PhantomData;
+use typed_arena::Arena;
 
-#[derive(Clone, Copy)]
-struct FormattingNode<'a> {
-    text: &'a str,
-    children: &'a [Self],
+pub fn render<N: ToFormattingNode>(node: Parsed<N>) -> String {
+    let text = Arena::new();
+    let children = Arena::new();
+    let mut arena = FormattingArena::new(&text, &children);
+    let node = to_formatting_node(node, &mut arena);
+    let mut buffer = String::new();
+    RenderState::<Outline, Outline> {
+        out: &mut buffer,
+        remaining_width: 120,
+        total_width: 120,
+        indent: 0,
+        indent_width: 4,
+        _boo: PhantomData,
+    }
+    .render(node);
+    buffer
 }
+
 struct RenderState<'out, M, G> {
     out: &'out mut String,
     remaining_width: i32,

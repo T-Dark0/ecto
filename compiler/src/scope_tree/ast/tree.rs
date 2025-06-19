@@ -52,7 +52,7 @@ pub enum Outcome<T> {
     Error,
 }
 impl<T> Parsed<T> {
-    pub fn valid(data: T, span: Span) -> Self {
+    pub fn valid(span: Span, data: T) -> Self {
         Self {
             outcome: Outcome::Valid(data),
             span,
@@ -75,6 +75,15 @@ impl<T> Parsed<T> {
             Outcome::Error => Outcome::Error,
         };
         Parsed { outcome, span }
+    }
+    pub fn as_ref(&self) -> Parsed<&T> {
+        Parsed {
+            span: self.span,
+            outcome: match &self.outcome {
+                Outcome::Valid(v) => Outcome::Valid(v),
+                Outcome::Error => Outcome::Error,
+            },
+        }
     }
     pub fn is_error(&self) -> bool {
         matches!(self.outcome, Outcome::Error)
