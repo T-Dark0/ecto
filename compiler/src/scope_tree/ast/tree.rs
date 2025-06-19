@@ -49,43 +49,34 @@ pub struct Parsed<T> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome<T> {
     Valid(T),
+    Recovered(T),
     Error,
 }
 impl<T> Parsed<T> {
-    pub fn valid(span: Span, data: T) -> Self {
+    pub fn valid(span: Span, node: T) -> Self {
         Self {
-            outcome: Outcome::Valid(data),
             span,
+            outcome: Outcome::Valid(node),
+        }
+    }
+    pub fn recovered(span: Span, node: T) -> Self {
+        Self {
+            span,
+            outcome: Outcome::Recovered(node),
         }
     }
     pub fn error(span: Span) -> Self {
         Self {
-            outcome: Outcome::Error,
             span,
+            outcome: Outcome::Error,
         }
-    }
-
-    pub fn map<F, U>(self, f: F) -> Parsed<U>
-    where
-        F: FnOnce(T) -> U,
-    {
-        let Self { outcome, span } = self;
-        let outcome = match outcome {
-            Outcome::Valid(t) => Outcome::Valid(f(t)),
-            Outcome::Error => Outcome::Error,
-        };
-        Parsed { outcome, span }
     }
     pub fn as_ref(&self) -> Parsed<&T> {
-        Parsed {
-            span: self.span,
-            outcome: match &self.outcome {
-                Outcome::Valid(v) => Outcome::Valid(v),
-                Outcome::Error => Outcome::Error,
-            },
+        let Self { span, outcome } = self;
+        match outcome {
+            Outcome::Valid(v) => Parsed::valid(*span, v),
+            Outcome::Recovered(e) => Parsed::recovered(*span, e),
+            Outcome::Error => Parsed::error(*span),
         }
-    }
-    pub fn is_error(&self) -> bool {
-        matches!(self.outcome, Outcome::Error)
     }
 }

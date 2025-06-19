@@ -5,18 +5,21 @@ use std::{
     fmt::{self, Debug},
     ops::Range,
 };
+use strum::EnumCount;
 
-#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
 #[logos(skip "[ \t]+")]
 pub enum TokenKind {
     #[token("fn")]
     Fn,
+    #[token("\n")]
+    Newline,
     #[token("op")]
     Op,
-    #[token("=")]
-    Equals,
     #[token(":")]
     Colon,
+    #[token("=")]
+    Equals,
     #[regex(r"\p{XID_Start}\p{XID_Continue}*")]
     Identifier,
     #[token("_")]
@@ -24,7 +27,7 @@ pub enum TokenKind {
     #[regex(r#""[^"]+""#)]
     NamePart,
     #[token(r"\")]
-    Backslash,
+    BackslashUnderscore,
     #[token("*")]
     Star,
     #[token(";")]
@@ -39,8 +42,6 @@ pub enum TokenKind {
     Use,
     #[token(".")]
     Dot,
-    #[token("\n")]
-    NewLine,
     #[token("(")]
     OpenParen,
     #[token(")")]
@@ -49,6 +50,7 @@ pub enum TokenKind {
     Eof,
     Error,
 }
+
 #[derive(Clone, Copy)]
 pub struct Token {
     pub kind: TokenKind,
@@ -60,72 +62,58 @@ impl Debug for Token {
     }
 }
 
-pub struct Lexed {
-    kinds: Vec<TokenKind>,
-    spans: Vec<Span>,
+pub struct Lexer<'source> {
+    raw: logos::Lexer<'source, TokenKind>,
+    state: LexerState,
 }
-#[derive(Clone, Copy)]
-pub struct LexedSlice<'a> {
-    kinds: &'a [TokenKind],
-    spans: &'a [Span],
+enum LexerState {
+    Normal,
+    Error { start: Span },
+    PostError { peeked: Token },
 }
-#[derive(Clone, Copy)]
-pub struct LexedRef<'a> {
-    kind: &'a TokenKind,
-    span: &'a Span,
-}
-impl Lexed {
-    pub fn as_slice(&self) -> LexedSlice<'_> {
-        LexedSlice {
-            kinds: &self.kinds,
-            spans: &self.spans,
+impl<'source> Lexer<'source> {
+    pub fn new(source: &'source str) -> Self {
+        Self {
+            raw: TokenKind::lexer(source),
+            state: LexerState::Normal,
         }
     }
-}
-impl<'a> LexedSlice<'a> {
-    pub fn kinds(self) -> &'a [TokenKind] {
-        self.kinds
-    }
-    pub fn strip_prefix(self, prefix: &[TokenKind]) -> Option<Self> {
-        let kinds = self.kinds.strip_prefix(prefix)?;
-        let spans = self.spans.get((self.spans.len() - kinds.len())..)?;
-        Some(Self { kinds, spans })
-    }
-    pub fn take_first(&mut self) -> Option<LexedRef<'a>> {
-        match *self {
-            Self {
-                kinds: [kind, kinds @ ..],
-                spans: [span, spans @ ..],
-            } => {
-                *self = Self { kinds, spans };
-                Some(LexedRef { kind, span })
+    pub fn next(&mut self) -> Token {
+        loop {
+            let tok = self.raw_next();
+            match self.state {
+                LexerState::Normal => match tok.kind {
+                    TokenKind::Error => {
+                        self.state = LexerState::Error { start: tok.span };
+                        continue;
+                    }
+                    _ => return tok,
+                },
+                LexerState::Error { start } => match tok.kind {
+                    TokenKind::Error => continue,
+                    _ => {
+                        self.state = LexerState::PostError { peeked: tok };
+                        return Token {
+                            kind: TokenKind::Error,
+                            span: start.around(tok.span),
+                        };
+                    }
+                },
+                LexerState::PostError { peeked } => {
+                    self.state = LexerState::Normal;
+                    return peeked;
+                }
             }
-            _ => None,
         }
     }
-    pub fn len(self) -> usize {
-        self.kinds.len()
+    fn raw_next(&mut self) -> Token {
+        let (kind, span) = match self.raw.next() {
+            Some(Ok(kind)) => (kind, to_span(self.raw.span())),
+            Some(Err(())) => (TokenKind::Error, to_span(self.raw.span())),
+            None => (TokenKind::Eof, to_span(self.raw.span()).empty_after()),
+        };
+        Token { kind, span }
     }
-}
-impl<'a> LexedRef<'a> {
-    pub fn kind(self) -> &'a TokenKind {
-        self.kind
-    }
-    pub fn span(self) -> &'a Span {
-        self.span
-    }
-}
-
-pub fn lex(source: &str) -> Lexed {
-    let (kinds, spans) = TokenKind::lexer(source)
-        .spanned()
-        .map(|(k, s)| (k.unwrap_or(TokenKind::Error), to_span(s)))
-        .coalesce(|prev, curr| match (prev.0, curr.0) {
-            (TokenKind::Error, TokenKind::Error) => Ok((TokenKind::Error, prev.1.until(curr.1))),
-            _ => Err((prev, curr)),
-        })
-        .collect();
-    Lexed { kinds, spans }
 }
 fn to_span(range: Range<usize>) -> Span {
     Span {

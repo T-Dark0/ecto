@@ -20,14 +20,14 @@ impl Span {
     pub fn new_empty(start: u32) -> Self {
         Self { start, len: 0 }
     }
-    pub fn until(self, rhs: Self) -> Self {
+    pub fn around(self, rhs: Self) -> Self {
         let end = rhs.start + u32::from(rhs.len);
         Self {
             start: self.start,
             len: (end - self.start) as u16,
         }
     }
-    pub fn until_exclusive(self, rhs: Self) -> Self {
+    pub fn inside(self, rhs: Self) -> Self {
         let after_lhs = self.start + u32::from(self.len);
         let before_rhs = rhs.start;
         Self {
