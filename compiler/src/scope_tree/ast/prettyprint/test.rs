@@ -50,12 +50,11 @@ fn test(text: &str) {
             let start = range.start.saturating_sub(20);
             let end = Ord::clamp(range.end + 20, 0, text.len());
             panic!(
-                "{:#?}\n`{}`\n{}{}{}",
+                "{:#?}\n`{}`\n{}{}",
                 e,
                 &text[start..end],
                 " ".repeat(range.start - start),
                 "^".repeat(range.len()),
-                " ".repeat(end - range.end),
             )
         }
     };
