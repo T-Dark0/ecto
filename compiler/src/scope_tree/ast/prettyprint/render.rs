@@ -1,5 +1,5 @@
 use super::formatting_node::{
-    to_formatting_node, FormattingArena, FormattingNode, ToFormattingNode,
+    to_formatting_node, Children, FormattingArena, FormattingNode, ToFormattingNode,
 };
 use crate::scope_tree::ast::Parsed;
 use std::marker::PhantomData;
@@ -38,12 +38,39 @@ where
     fn render(self, node: FormattingNode<'_>) -> Result<Self, M::Error> {
         let state = self.push(node.text)?;
         let state = match node.children {
-            [] => state,
-            &[one] => state.fallback(
+            Children::Never => state,
+            Children::Sometimes([]) => state.push("()")?,
+            Children::Sometimes(&[one]) => state.fallback(
                 |inline| inline.push("(")?.reserve(1)?.render(one)?.push_reserved(")").ok(),
                 |outline| outline.push("(").nest().render(one).unnest().push(")").line().end(),
             ),
-            many => todo!(),
+            Children::Sometimes(many) => state.fallback(
+                |inline| {
+                    if many.iter().any(|child| child.has_children()) {
+                        return Err(());
+                    }
+                    let mut inline = inline.push("(")?.reserve(1)?;
+                    let mut children = many.iter();
+                    if let Some(&first) = children.next() {
+                        inline = inline.render(first)?;
+                        for &child in children {
+                            inline = inline.push(" ")?.render(child)?;
+                        }
+                    }
+                    inline.push_reserved(")").ok()
+                },
+                |outline| {
+                    let mut outline = outline.push("(").nest();
+                    let mut children = many.iter();
+                    if let Some(&first) = children.next() {
+                        outline = outline.render(first);
+                        for &child in children {
+                            outline = outline.line().render(child)
+                        }
+                    }
+                    outline.unnest().push(")").end()
+                },
+            ),
         };
         Ok(state)
     }

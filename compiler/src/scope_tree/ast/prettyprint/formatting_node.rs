@@ -1,7 +1,8 @@
+use super::common::Validity;
 use crate::scope_tree::{
     ast::{
         Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        UseStmt,
+        ScopeContents, UseStmt,
     },
     Span,
 };
@@ -21,19 +22,14 @@ where
             node.to_formatting_node(NodeContext::recovered(parsed.span), arena)
         }
         Outcome::Error => FormattingNode {
-            text: arena.name_and_span("Missing", parsed.span),
-            children: &[],
+            text: arena.name_and_context("Missing", NodeContext::valid(parsed.span)),
+            children: Children::Never,
         },
     }
 }
 pub struct NodeContext {
     pub span: Span,
     pub validity: Validity,
-}
-#[derive(PartialEq, Eq)]
-pub enum Validity {
-    Valid,
-    Recovered,
 }
 impl NodeContext {
     pub fn valid(span: Span) -> Self {
@@ -53,13 +49,31 @@ impl NodeContext {
 #[derive(Clone, Copy)]
 pub struct FormattingNode<'arena> {
     pub text: &'arena str,
-    pub children: &'arena [Self],
+    pub children: Children<'arena>,
 }
+#[derive(Clone, Copy)]
+pub enum Children<'arena> {
+    Never,
+    Sometimes(&'arena [FormattingNode<'arena>]),
+}
+impl<'arena> FormattingNode<'arena> {
+    pub fn has_children(&self) -> bool {
+        match self.children {
+            Children::Never => false,
+            Children::Sometimes(children) => !children.is_empty(),
+        }
+    }
+}
+
 pub struct FormattingArena<'arena> {
     text: &'arena Arena<u8>,
     children: &'arena Arena<FormattingNode<'arena>>,
     text_scratch_buffer: String,
     children_scratch_buffer: Vec<FormattingNode<'arena>>,
+    children_stack_frame_sizes: Vec<usize>,
+}
+pub struct ChildBuilder<'of, 'arena> {
+    arena: &'of mut FormattingArena<'arena>,
 }
 impl<'arena> FormattingArena<'arena> {
     pub fn new(text: &'arena Arena<u8>, children: &'arena Arena<FormattingNode<'arena>>) -> Self {
@@ -68,6 +82,7 @@ impl<'arena> FormattingArena<'arena> {
             children,
             text_scratch_buffer: String::new(),
             children_scratch_buffer: Vec::new(),
+            children_stack_frame_sizes: Vec::new(),
         }
     }
     pub fn name_and_context(&mut self, name: &str, ctx: NodeContext) -> &'arena str {
@@ -80,48 +95,82 @@ impl<'arena> FormattingArena<'arena> {
         self.text_scratch_buffer.clear();
         out
     }
-    pub fn name_and_span(&mut self, name: &str, span: Span) -> &'arena str {
-        self.text_scratch_buffer.push_str(name);
-        _ = write!(&mut self.text_scratch_buffer, "{span:?}");
-        let out = self.text.alloc_str(&self.text_scratch_buffer);
-        self.text_scratch_buffer.clear();
-        out
-    }
     pub fn unit(&mut self, name: &str, ctx: NodeContext) -> FormattingNode<'arena> {
         FormattingNode {
             text: self.name_and_context(name, ctx),
-            children: &[],
+            children: Children::Never,
         }
     }
-    pub fn add_child<C>(&mut self, child: &Parsed<C>) -> &mut Self
+    pub fn child<C>(&mut self, child: &Parsed<C>) -> Children<'arena>
     where
         C: ToFormattingNode,
     {
-        let child = to_formatting_node(child.as_ref(), self);
-        self.children_scratch_buffer.push(child);
+        self.children_builder().child(child).finish()
+    }
+    pub fn children<'a, C, N>(&mut self, children: C) -> Children<'arena>
+    where
+        C: IntoIterator<Item = &'a Parsed<N>>,
+        N: ToFormattingNode + 'a,
+    {
+        self.children_builder().children(children).finish()
+    }
+    pub fn children_builder(&mut self) -> ChildBuilder<'_, 'arena> {
+        self.children_stack_frame_sizes.push(self.children_scratch_buffer.len());
+        ChildBuilder { arena: self }
+    }
+}
+impl<'of, 'arena> ChildBuilder<'of, 'arena> {
+    pub fn child<C>(&mut self, child: &Parsed<C>) -> &mut Self
+    where
+        C: ToFormattingNode,
+    {
+        let child = to_formatting_node(child.as_ref(), self.arena);
+        self.arena.children_scratch_buffer.push(child);
         self
     }
-    pub fn add_children<'a, C, N>(&mut self, children: C) -> &mut Self
+    pub fn children<'a, C, N>(&mut self, children: C) -> &mut Self
     where
         C: IntoIterator<Item = &'a Parsed<N>>,
         N: ToFormattingNode + 'a,
     {
         for child in children {
-            self.add_child(child);
+            self.child(child);
         }
         self
     }
-    pub fn finish_children(&mut self) -> &'arena [FormattingNode<'arena>] {
-        self.children.alloc_extend(self.children_scratch_buffer.drain(..))
+    pub fn finish(&mut self) -> Children<'arena> {
+        let own_children_start = self.arena.children_stack_frame_sizes.pop().unwrap();
+        Children::Sometimes(
+            self.arena
+                .children
+                .alloc_extend(self.arena.children_scratch_buffer.drain(own_children_start..)),
+        )
     }
 }
 
 pub trait ToFormattingNode {
     fn to_formatting_node<'arena>(
         &self,
-        context: NodeContext,
+        ctx: NodeContext,
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena>;
+}
+impl ToFormattingNode for ScopeContents {
+    fn to_formatting_node<'arena>(
+        &self,
+        ctx: NodeContext,
+        arena: &mut FormattingArena<'arena>,
+    ) -> FormattingNode<'arena> {
+        FormattingNode {
+            text: arena.name_and_context("ScopeContents", ctx),
+            children: arena
+                .children_builder()
+                .children(&self.uses)
+                .children(&self.op_defs)
+                .children(&self.children)
+                .finish(),
+        }
+    }
 }
 impl ToFormattingNode for Scope {
     fn to_formatting_node<'arena>(
@@ -131,11 +180,7 @@ impl ToFormattingNode for Scope {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("Scope", ctx),
-            children: arena
-                .add_children(&self.uses)
-                .add_children(&self.op_defs)
-                .add_children(&self.children)
-                .finish_children(),
+            children: arena.child(&self.0),
         }
     }
 }
@@ -147,7 +192,7 @@ impl ToFormattingNode for UseStmt {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("UseStmt", ctx),
-            children: arena.add_children(&self.path).finish_children(),
+            children: arena.children_builder().children(&self.path).finish(),
         }
     }
 }
@@ -159,7 +204,7 @@ impl ToFormattingNode for OpDef {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("OpDef", ctx),
-            children: arena.add_child(&self.bindings).add_child(&self.parts).finish_children(),
+            children: arena.children_builder().child(&self.parts).child(&self.bindings).finish(),
         }
     }
 }
@@ -171,7 +216,7 @@ impl ToFormattingNode for OpBindings {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("OpBindings", ctx),
-            children: arena.add_children(&self.0).finish_children(),
+            children: arena.children(&self.0),
         }
     }
 }
@@ -184,10 +229,11 @@ impl ToFormattingNode for OpBinding {
         FormattingNode {
             text: arena.name_and_context("OpBinding", ctx),
             children: arena
-                .add_child(&self.lhs)
-                .add_child(&self.arrow)
-                .add_child(&self.rhs)
-                .finish_children(),
+                .children_builder()
+                .child(&self.lhs)
+                .child(&self.arrow)
+                .child(&self.rhs)
+                .finish(),
         }
     }
 }
@@ -197,9 +243,13 @@ impl ToFormattingNode for OpArrow {
         ctx: NodeContext,
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena> {
+        let name = match self {
+            Self::Left => "OpArrowLeft",
+            Self::Right => "OpArrowRight",
+        };
         FormattingNode {
-            text: arena.name_and_context("OpArrow", ctx),
-            children: &[],
+            text: arena.name_and_context(name, ctx),
+            children: Children::Never,
         }
     }
 }
@@ -209,7 +259,10 @@ impl ToFormattingNode for OpParts {
         ctx: NodeContext,
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena> {
-        arena.unit("OpParts", ctx)
+        FormattingNode {
+            text: arena.name_and_context("OpParts", ctx),
+            children: arena.children(&self.0),
+        }
     }
 }
 impl ToFormattingNode for OpPart {
@@ -224,7 +277,7 @@ impl ToFormattingNode for OpPart {
             OpPart::Literal => arena.unit("Literal", ctx),
             OpPart::Variadic(parsed) => FormattingNode {
                 text: arena.name_and_context("Variadic", ctx),
-                children: arena.add_child(parsed).finish_children(),
+                children: arena.child(parsed),
             },
         }
     }
