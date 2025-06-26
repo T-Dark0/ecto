@@ -1,9 +1,6 @@
 use super::common::{AnyNode, Validity};
 use crate::scope_tree::{
-    ast::{
-        Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope,
-        ScopeContents, UseStmt,
-    },
+    ast::{Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope, UseStmt},
     Span,
 };
 use logos::Logos;
@@ -81,7 +78,6 @@ impl Error {
 
 fn parse_any_node(lexer: &mut Lexer<'_>) -> Result<Parsed<AnyNode>, Error> {
     Ok(match lexer.next()? {
-        Token::ScopeContents => parse_scope_contents(lexer)?.map(AnyNode::ScopeContents),
         Token::UseStmt => parse_use_stmt(lexer)?.map(AnyNode::UseStmt),
         Token::Ident => parse_ident(lexer)?.map(AnyNode::Ident),
         Token::OpDef => parse_op_def(lexer)?.map(AnyNode::OpDef),
@@ -97,7 +93,6 @@ fn parse_any_node(lexer: &mut Lexer<'_>) -> Result<Parsed<AnyNode>, Error> {
             return Err(Error::unexpected_token(
                 lexer.span(),
                 &[
-                    Token::ScopeContents,
                     Token::UseStmt,
                     Token::Ident,
                     Token::OpDef,
@@ -138,7 +133,7 @@ fn parse_span(lexer: &mut Lexer<'_>) -> Result<Span, Error> {
     lexer.expect(&Token::CloseSquareParen)?;
     Ok(Span { start, len })
 }
-fn parse_scope_contents(lexer: &mut Lexer<'_>) -> Result<Parsed<ScopeContents>, Error> {
+fn parse_scope(lexer: &mut Lexer<'_>) -> Result<Parsed<Scope>, Error> {
     let validity = parse_validity(lexer)?;
     let span = parse_span(lexer)?;
     lexer.expect(&Token::OpenRoundParen)?;
@@ -168,7 +163,7 @@ fn parse_scope_contents(lexer: &mut Lexer<'_>) -> Result<Parsed<ScopeContents>, 
     Ok(parsed(
         validity,
         span,
-        ScopeContents {
+        Scope {
             uses,
             op_defs,
             children,
@@ -300,23 +295,6 @@ fn parse_op_arrow_right(lexer: &mut Lexer<'_>) -> Result<Parsed<OpArrow>, Error>
     let span = parse_span(lexer)?;
     Ok(parsed(validity, span, OpArrow::Right))
 }
-fn parse_scope(lexer: &mut Lexer<'_>) -> Result<Parsed<Scope>, Error> {
-    let validity = parse_validity(lexer)?;
-    let span = parse_span(lexer)?;
-    lexer.expect(&Token::OpenRoundParen)?;
-    let contents = match lexer.next()? {
-        Token::ScopeContents => parse_scope_contents(lexer)?,
-        tok => {
-            return Err(Error::unexpected_token(
-                lexer.span(),
-                &[Token::ScopeContents],
-                tok,
-            ))
-        }
-    };
-    lexer.expect(&Token::CloseRoundParen)?;
-    Ok(parsed(validity, span, Scope(contents)))
-}
 fn parsed<T>(validity: Validity, span: Span, node: T) -> Parsed<T> {
     match validity {
         Validity::Valid => Parsed::valid(span, node),
@@ -377,8 +355,6 @@ impl<'source> Lexer<'source> {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Logos)]
 #[logos(skip r"[ \s\t\r\n]+")]
 enum Token {
-    #[token("ScopeContents")]
-    ScopeContents,
     #[token("UseStmt")]
     UseStmt,
     #[token("Ident")]

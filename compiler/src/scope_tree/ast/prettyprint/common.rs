@@ -1,6 +1,6 @@
 use super::formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode};
 use crate::scope_tree::ast::{
-    Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Scope, ScopeContents, UseStmt,
+    Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Scope, UseStmt,
 };
 use std::fmt::{self, Debug};
 
@@ -12,7 +12,6 @@ pub enum Validity {
 
 #[derive(PartialEq, Eq)]
 pub enum AnyNode {
-    ScopeContents(ScopeContents),
     UseStmt(UseStmt),
     Ident(Ident),
     OpDef(OpDef),
@@ -43,7 +42,7 @@ macro_rules! impl_traits {
 
     };
 }
-impl_traits! { ScopeContents UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow Scope }
+impl_traits! { UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow Scope }
 
 impl ToFormattingNode for AnyNode {
     fn to_formatting_node<'arena>(
@@ -52,7 +51,6 @@ impl ToFormattingNode for AnyNode {
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena> {
         match self {
-            AnyNode::ScopeContents(s) => s.to_formatting_node(ctx, arena),
             AnyNode::UseStmt(u) => u.to_formatting_node(ctx, arena),
             AnyNode::Ident(i) => i.to_formatting_node(ctx, arena),
             AnyNode::OpDef(o) => o.to_formatting_node(ctx, arena),

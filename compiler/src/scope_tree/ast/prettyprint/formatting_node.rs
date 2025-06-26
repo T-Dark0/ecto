@@ -2,7 +2,7 @@ use super::common::Validity;
 use crate::scope_tree::{
     ast::{
         Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        ScopeContents, UseStmt,
+        UseStmt,
     },
     Span,
 };
@@ -155,23 +155,6 @@ pub trait ToFormattingNode {
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena>;
 }
-impl ToFormattingNode for ScopeContents {
-    fn to_formatting_node<'arena>(
-        &self,
-        ctx: NodeContext,
-        arena: &mut FormattingArena<'arena>,
-    ) -> FormattingNode<'arena> {
-        FormattingNode {
-            text: arena.name_and_context("ScopeContents", ctx),
-            children: arena
-                .children_builder()
-                .children(&self.uses)
-                .children(&self.op_defs)
-                .children(&self.children)
-                .finish(),
-        }
-    }
-}
 impl ToFormattingNode for Scope {
     fn to_formatting_node<'arena>(
         &self,
@@ -180,7 +163,12 @@ impl ToFormattingNode for Scope {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("Scope", ctx),
-            children: arena.child(&self.0),
+            children: arena
+                .children_builder()
+                .children(&self.uses)
+                .children(&self.op_defs)
+                .children(&self.children)
+                .finish(),
         }
     }
 }

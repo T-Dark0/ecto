@@ -1,7 +1,7 @@
 use crate::scope_tree::{
     ast::{
         Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        ScopeContents, UseStmt,
+        UseStmt,
     },
     lex::{Lexer, Token, TokenKind},
     Span,
@@ -12,7 +12,7 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-pub fn parse(source: &str) -> (Parsed<ScopeContents>, Vec<Error>) {
+pub fn parse(source: &str) -> (Parsed<Scope>, Vec<Error>) {
     let tokens = Lexer::new(source).collect::<Vec<_>>();
     let mut parser = Parser::<SkipNewlines>::new(ParserCore {
         lexed: &tokens,
@@ -44,7 +44,10 @@ impl<'source, M> Parser<'source, M> {
     }
 }
 impl<'source, M: NewlineHandler> Parser<'source, M> {
-    fn parse_scope_contents(&mut self) -> Parsed<ScopeContents> {
+    fn parse_top_level(&mut self) -> Parsed<Scope> {
+        todo!()
+    }
+    fn parse_scope_contents(&mut self) -> Parsed<Scope> {
         self.spanning(|parser| {
             let mut uses = Vec::new();
             let mut op_defs = Vec::new();
@@ -63,7 +66,7 @@ impl<'source, M: NewlineHandler> Parser<'source, M> {
                     next else => (),
                 }
             }
-            Outcome::Valid(ScopeContents {
+            Outcome::Valid(Scope {
                 uses,
                 op_defs,
                 children,
@@ -222,12 +225,12 @@ impl<'source, M: NewlineHandler> Parser<'source, M> {
     fn parse_scope(&mut self) -> Parsed<Scope> {
         self.spanning(|parser| {
             parser.next();
-            let contents = parser.parse_scope_contents();
+            let scope = parser.parse_scope_contents();
             select! { parser, |tok|
-                next TokenKind::CloseParen => Outcome::Valid(Scope(contents)),
+                next TokenKind::CloseParen => scope.outcome,
                 // RECOVERY: Check for other kinds of close paren
                 // RECOVERY: Reparse in an indentation-sensitive manner, to try to spot the matching paren
-                next else => Outcome::Recovered(Scope(contents)),
+                next else => scope.outcome.valid_into_recovered(),
             }
         })
     }

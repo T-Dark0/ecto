@@ -1,13 +1,11 @@
 use crate::scope_tree::Span;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ScopeContents {
+pub struct Scope {
     pub uses: Vec<Parsed<UseStmt>>,
     pub op_defs: Vec<Parsed<OpDef>>,
     pub children: Vec<Parsed<Scope>>,
 }
-#[derive(Debug, PartialEq, Eq)]
-pub struct Scope(pub Parsed<ScopeContents>);
 #[derive(Debug, PartialEq, Eq)]
 pub struct UseStmt {
     pub path: Vec<Parsed<Ident>>,
@@ -54,6 +52,14 @@ pub enum Outcome<T> {
     Recovered(T),
     Error,
 }
+impl<T> Outcome<T> {
+    pub fn valid_into_recovered(self) -> Self {
+        match self {
+            Outcome::Valid(v) | Outcome::Recovered(v) => Outcome::Recovered(v),
+            Outcome::Error => Outcome::Error,
+        }
+    }
+}
 impl<T> Parsed<T> {
     pub fn valid(span: Span, node: T) -> Self {
         Self {
@@ -81,6 +87,15 @@ impl<T> Parsed<T> {
             Outcome::Valid(v) => Parsed::valid(self.span, f(v)),
             Outcome::Recovered(r) => Parsed::recovered(self.span, f(r)),
             Outcome::Error => Parsed::error(self.span),
+        }
+    }
+    pub fn map_outcome<F, R>(self, f: F) -> Parsed<R>
+    where
+        F: FnOnce(Outcome<T>) -> Outcome<R>,
+    {
+        Parsed {
+            span: self.span,
+            outcome: f(self.outcome),
         }
     }
     pub fn as_ref(&self) -> Parsed<&T> {

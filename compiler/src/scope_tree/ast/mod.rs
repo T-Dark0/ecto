@@ -2,6 +2,5 @@ pub mod prettyprint;
 mod tree;
 
 pub use tree::{
-    Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-    ScopeContents, UseStmt,
+    Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope, UseStmt,
 };
