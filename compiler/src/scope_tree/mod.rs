@@ -1,8 +1,11 @@
-use std::fmt::{self, Debug};
+use std::{
+    fmt::{self, Debug},
+    ops::Range,
+};
 
 mod ast;
-mod lexer;
-mod parser;
+mod lex;
+mod parse;
 
 /// Represents a span in cursor units. For example, `Span { start: 3, len: 5 }` on the string `abcdefghij` would refer to the portion
 /// `defgh`: the `3` refers to the third space between letters, the third position a typing cursor may be placed at.
@@ -27,7 +30,7 @@ impl Span {
             len: (end - self.start) as u16,
         }
     }
-    pub fn inside(self, rhs: Self) -> Self {
+    pub fn between(self, rhs: Self) -> Self {
         let after_lhs = self.start + u32::from(self.len);
         let before_rhs = rhs.start;
         Self {
@@ -46,6 +49,9 @@ impl Span {
             start: self.start,
             len: 0,
         }
+    }
+    pub fn to_usize_range(self) -> Range<usize> {
+        self.start as usize..(self.start + u32::from(self.len)) as usize
     }
 }
 impl Debug for Span {

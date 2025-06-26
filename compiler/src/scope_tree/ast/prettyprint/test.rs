@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::{parse, render};
+use crate::test_util::literal;
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -42,7 +43,7 @@ fn empty_scope_has_parens() {
 }
 
 fn test(text: &str) {
-    let expected = input(text);
+    let expected = literal(text);
     let ast = match parse(text) {
         Ok(ast) => ast,
         Err(e) => {
@@ -60,26 +61,4 @@ fn test(text: &str) {
     };
     let got = render(ast);
     assert_eq!(expected, got)
-}
-
-fn input(text: &str) -> String {
-    let Some(min_indent) = text
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.len() - line.trim_start().len())
-        .min()
-    else {
-        return String::new();
-    };
-    let mut out = String::new();
-    let mut lines =
-        text.lines().filter(|line| !line.trim().is_empty()).map(|line| &line[min_indent..]);
-    if let Some(first) = lines.next() {
-        out.push_str(first);
-        for line in lines {
-            out.push('\n');
-            out.push_str(line);
-        }
-    }
-    out
 }

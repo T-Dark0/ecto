@@ -1,5 +1,3 @@
-use std::{backtrace::Backtrace, ops::Range, panic::Location, rc::Rc, slice};
-
 use super::common::{AnyNode, Validity};
 use crate::scope_tree::{
     ast::{
@@ -9,6 +7,7 @@ use crate::scope_tree::{
     Span,
 };
 use logos::Logos;
+use std::{ops::Range, slice};
 
 pub fn parse(pretty: &str) -> Result<Parsed<AnyNode>, Error> {
     parse_any_node(&mut Lexer {
@@ -21,7 +20,6 @@ pub fn parse(pretty: &str) -> Result<Parsed<AnyNode>, Error> {
 pub struct Error {
     pub kind: ErrorKind,
     pub span: Span,
-    trace: Rc<Backtrace>,
 }
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorKind {
@@ -41,49 +39,42 @@ impl Error {
         Self {
             kind: ErrorKind::LexError,
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
     fn unexpected_token(span: Span, expected: &'static [Token], got: Token) -> Self {
         Self {
             kind: ErrorKind::UnexpectedToken { expected, got },
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
     fn unexpected_eof(span: Span) -> Self {
         Self {
             kind: ErrorKind::UnexpectedEof,
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
     fn invalid_span_start(span: Span) -> Self {
         Self {
             kind: ErrorKind::InvalidSpanStart,
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
     fn invalid_span_len(span: Span) -> Self {
         Self {
             kind: ErrorKind::InvalidSpanLen,
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
     fn missing_op_parts(span: Span) -> Self {
         Self {
             kind: ErrorKind::MissingOpParts,
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
     fn missing_op_bindings(span: Span) -> Self {
         Self {
             kind: ErrorKind::MissingOpBindings,
             span,
-            trace: Rc::new(Backtrace::force_capture()),
         }
     }
 }

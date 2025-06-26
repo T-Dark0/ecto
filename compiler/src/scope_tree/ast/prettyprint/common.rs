@@ -1,8 +1,8 @@
+use super::formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode};
 use crate::scope_tree::ast::{
     Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Scope, ScopeContents, UseStmt,
 };
-
-use super::formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode};
+use std::fmt::{self, Debug};
 
 #[derive(PartialEq, Eq)]
 pub enum Validity {
@@ -10,7 +10,7 @@ pub enum Validity {
     Recovered,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum AnyNode {
     ScopeContents(ScopeContents),
     UseStmt(UseStmt),
@@ -23,8 +23,15 @@ pub enum AnyNode {
     OpArrow(OpArrow),
     Scope(Scope),
 }
-macro_rules! impl_partial_eq {
+macro_rules! impl_traits {
     ($($node:ident)*) => {
+        impl Debug for AnyNode {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $( Self::$node(x) => Debug::fmt(x, f), )*
+                }
+            }
+        }
         $(
             impl PartialEq<$node> for AnyNode {
                 fn eq(&self, other: &$node) -> bool {
@@ -36,7 +43,7 @@ macro_rules! impl_partial_eq {
 
     };
 }
-impl_partial_eq! { ScopeContents UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow Scope }
+impl_traits! { ScopeContents UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow Scope }
 
 impl ToFormattingNode for AnyNode {
     fn to_formatting_node<'arena>(

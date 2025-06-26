@@ -1,11 +1,13 @@
 use crate::scope_tree::Span;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Scope {
+pub struct ScopeContents {
     pub uses: Vec<Parsed<UseStmt>>,
     pub op_defs: Vec<Parsed<OpDef>>,
     pub children: Vec<Parsed<Scope>>,
 }
+#[derive(Debug, PartialEq, Eq)]
+pub struct Scope(pub Parsed<ScopeContents>);
 #[derive(Debug, PartialEq, Eq)]
 pub struct UseStmt {
     pub path: Vec<Parsed<Ident>>,
@@ -41,12 +43,12 @@ pub enum OpArrow {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ident;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct Parsed<T> {
     pub span: Span,
     pub outcome: Outcome<T>,
 }
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub enum Outcome<T> {
     Valid(T),
     Recovered(T),
@@ -71,12 +73,42 @@ impl<T> Parsed<T> {
             outcome: Outcome::Error,
         }
     }
+    pub fn map<F, R>(self, f: F) -> Parsed<R>
+    where
+        F: FnOnce(T) -> R,
+    {
+        match self.outcome {
+            Outcome::Valid(v) => Parsed::valid(self.span, f(v)),
+            Outcome::Recovered(r) => Parsed::recovered(self.span, f(r)),
+            Outcome::Error => Parsed::error(self.span),
+        }
+    }
     pub fn as_ref(&self) -> Parsed<&T> {
-        let Self { span, outcome } = self;
-        match outcome {
-            Outcome::Valid(v) => Parsed::valid(*span, v),
-            Outcome::Recovered(e) => Parsed::recovered(*span, e),
-            Outcome::Error => Parsed::error(*span),
+        match &self.outcome {
+            Outcome::Valid(v) => Parsed::valid(self.span, v),
+            Outcome::Recovered(e) => Parsed::recovered(self.span, e),
+            Outcome::Error => Parsed::error(self.span),
+        }
+    }
+}
+impl<T, U> PartialEq<Parsed<U>> for Parsed<T>
+where
+    T: PartialEq<U>,
+{
+    fn eq(&self, other: &Parsed<U>) -> bool {
+        self.outcome == other.outcome && self.span == other.span
+    }
+}
+impl<T, U> PartialEq<Outcome<U>> for Outcome<T>
+where
+    T: PartialEq<U>,
+{
+    fn eq(&self, other: &Outcome<U>) -> bool {
+        match (self, other) {
+            (Outcome::Valid(v1), Outcome::Valid(v2)) => v1 == v2,
+            (Outcome::Recovered(r1), Outcome::Recovered(r2)) => r1 == r2,
+            (Outcome::Error, Outcome::Error) => true,
+            _ => false,
         }
     }
 }
