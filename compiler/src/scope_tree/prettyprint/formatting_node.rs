@@ -1,10 +1,10 @@
 use super::common::Validity;
 use crate::scope_tree::{
     ast::{
-        Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        UseStmt,
+        Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed,
+        Scope, UseStmt,
     },
-    Span,
+    span::Span,
 };
 use std::fmt::Write;
 use typed_arena::Arena;
@@ -21,12 +21,32 @@ where
         Outcome::Recovered(node) => {
             node.to_formatting_node(NodeContext::recovered(parsed.span), arena)
         }
-        Outcome::Error => FormattingNode {
-            text: arena.name_and_context("Missing", NodeContext::valid(parsed.span)),
-            children: Children::Never,
-        },
+        Outcome::Error(kind) => node_kind_to_formatting_node(*kind, parsed.span, arena),
     }
 }
+fn node_kind_to_formatting_node<'arena>(
+    kind: NodeKind,
+    span: Span,
+    arena: &mut FormattingArena<'arena>,
+) -> FormattingNode<'arena> {
+    let name = match kind {
+        NodeKind::Scope => "Scope!",
+        NodeKind::UseStmt => "UseStmt!",
+        NodeKind::OpDef => "OpDef!",
+        NodeKind::OpParts => "OpParts!",
+        NodeKind::OpPart => "OpPart!",
+        NodeKind::Variadic => "Variadic!",
+        NodeKind::OpBindings => "OpBindings!",
+        NodeKind::OpBinding => "OpBinding!",
+        NodeKind::OpArrow => "OpArrow!",
+        NodeKind::Ident => "Ident!",
+    };
+    FormattingNode {
+        text: arena.name_and_span(name, span),
+        children: Children::Never,
+    }
+}
+
 pub struct NodeContext {
     pub span: Span,
     pub validity: Validity,
@@ -85,10 +105,17 @@ impl<'arena> FormattingArena<'arena> {
             children_stack_frame_sizes: Vec::new(),
         }
     }
+    pub fn name_and_span(&mut self, name: &str, span: Span) -> &'arena str {
+        self.text_scratch_buffer.push_str(name);
+        _ = write!(&mut self.text_scratch_buffer, "{span:?}");
+        let out = self.text.alloc_str(&self.text_scratch_buffer);
+        self.text_scratch_buffer.clear();
+        out
+    }
     pub fn name_and_context(&mut self, name: &str, ctx: NodeContext) -> &'arena str {
         self.text_scratch_buffer.push_str(name);
         if ctx.validity == Validity::Recovered {
-            self.text_scratch_buffer.push('*');
+            self.text_scratch_buffer.push('~');
         }
         _ = write!(&mut self.text_scratch_buffer, "{:?}", ctx.span);
         let out = self.text.alloc_str(&self.text_scratch_buffer);
@@ -247,6 +274,7 @@ impl ToFormattingNode for OpParts {
         ctx: NodeContext,
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena> {
+        println!("OpParts::to_formatting_node");
         FormattingNode {
             text: arena.name_and_context("OpParts", ctx),
             children: arena.children(&self.0),
@@ -263,10 +291,13 @@ impl ToFormattingNode for OpPart {
             OpPart::Argument => arena.unit("Argument", ctx),
             OpPart::LazyArgument => arena.unit("LazyArgument", ctx),
             OpPart::Literal => arena.unit("Literal", ctx),
-            OpPart::Variadic(parsed) => FormattingNode {
-                text: arena.name_and_context("Variadic", ctx),
-                children: arena.child(parsed),
-            },
+            OpPart::Variadic(parts) => {
+                println!("variadic");
+                FormattingNode {
+                    text: arena.name_and_context("Variadic", ctx),
+                    children: arena.child(parts),
+                }
+            }
         }
     }
 }

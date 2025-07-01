@@ -1,4 +1,4 @@
-use crate::scope_tree::Span;
+use crate::scope_tree::span::Span;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Scope {
@@ -37,9 +37,22 @@ pub enum OpArrow {
     Left,
     Right,
 }
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ident;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum NodeKind {
+    Scope,
+    UseStmt,
+    OpDef,
+    OpParts,
+    OpPart,
+    Variadic,
+    OpBindings,
+    OpBinding,
+    OpArrow,
+    Ident,
+}
 
 #[derive(Debug, Eq)]
 pub struct Parsed<T> {
@@ -50,13 +63,13 @@ pub struct Parsed<T> {
 pub enum Outcome<T> {
     Valid(T),
     Recovered(T),
-    Error,
+    Error(NodeKind),
 }
 impl<T> Outcome<T> {
     pub fn valid_into_recovered(self) -> Self {
         match self {
             Outcome::Valid(v) | Outcome::Recovered(v) => Outcome::Recovered(v),
-            Outcome::Error => Outcome::Error,
+            Outcome::Error(k) => Outcome::Error(k),
         }
     }
 }
@@ -73,10 +86,10 @@ impl<T> Parsed<T> {
             outcome: Outcome::Recovered(node),
         }
     }
-    pub fn error(span: Span) -> Self {
+    pub fn error(span: Span, kind: NodeKind) -> Self {
         Self {
             span,
-            outcome: Outcome::Error,
+            outcome: Outcome::Error(kind),
         }
     }
     pub fn map<F, R>(self, f: F) -> Parsed<R>
@@ -86,7 +99,7 @@ impl<T> Parsed<T> {
         match self.outcome {
             Outcome::Valid(v) => Parsed::valid(self.span, f(v)),
             Outcome::Recovered(r) => Parsed::recovered(self.span, f(r)),
-            Outcome::Error => Parsed::error(self.span),
+            Outcome::Error(k) => Parsed::error(self.span, k),
         }
     }
     pub fn map_outcome<F, R>(self, f: F) -> Parsed<R>
@@ -102,7 +115,7 @@ impl<T> Parsed<T> {
         match &self.outcome {
             Outcome::Valid(v) => Parsed::valid(self.span, v),
             Outcome::Recovered(e) => Parsed::recovered(self.span, e),
-            Outcome::Error => Parsed::error(self.span),
+            Outcome::Error(k) => Parsed::error(self.span, *k),
         }
     }
 }
@@ -122,7 +135,7 @@ where
         match (self, other) {
             (Outcome::Valid(v1), Outcome::Valid(v2)) => v1 == v2,
             (Outcome::Recovered(r1), Outcome::Recovered(r2)) => r1 == r2,
-            (Outcome::Error, Outcome::Error) => true,
+            (Outcome::Error(k1), Outcome::Error(k2)) => k1 == k2,
             _ => false,
         }
     }

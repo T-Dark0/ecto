@@ -4,5 +4,6 @@ mod parse;
 mod render;
 mod test;
 
+pub use common::AnyNode;
 pub use parse::parse;
 pub use render::render;

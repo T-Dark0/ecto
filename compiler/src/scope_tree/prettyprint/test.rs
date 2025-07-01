@@ -54,7 +54,7 @@ fn test(text: &str) {
                 "{:#?}\n`{}`\n{}{}",
                 e,
                 &text[start..end],
-                " ".repeat(range.start - start),
+                " ".repeat(range.start - start + 1),
                 "^".repeat(range.len()),
             )
         }

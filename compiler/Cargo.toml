@@ -1,11 +1,12 @@
 [package]
 name = "ecto_compiler"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-logos = "0.15.0"
 ecto_macros = { version = "0.1.0", path = "../macros" }
+
+logos = "0.15.0"
 strum = { version = "0.26.3", features = ["derive"] }
 itertools = "0.14.0"
 typed-arena = "2.0.2"

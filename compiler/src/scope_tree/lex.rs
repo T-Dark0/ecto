@@ -1,4 +1,4 @@
-use super::Span;
+use super::span::Span;
 use logos::Logos;
 use std::{
     fmt::{self, Debug},
@@ -19,6 +19,8 @@ pub enum TokenKind {
     Colon,
     #[token("=")]
     Equals,
+    #[token("=>")]
+    RightFatArrow,
     #[regex(r"\p{XID_Start}\p{XID_Continue}*")]
     Ident,
     #[token("_")]

@@ -8,6 +8,7 @@ use std::fmt::{self, Debug};
 pub enum Validity {
     Valid,
     Recovered,
+    Error,
 }
 
 #[derive(PartialEq, Eq)]
@@ -27,7 +28,7 @@ macro_rules! impl_traits {
         impl Debug for AnyNode {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
-                    $( Self::$node(x) => Debug::fmt(x, f), )*
+                    $( Self::$node(node) => Debug::fmt(node, f), )*
                 }
             }
         }
@@ -42,7 +43,7 @@ macro_rules! impl_traits {
 
     };
 }
-impl_traits! { UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow Scope }
+impl_traits! {Scope UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow }
 
 impl ToFormattingNode for AnyNode {
     fn to_formatting_node<'arena>(
