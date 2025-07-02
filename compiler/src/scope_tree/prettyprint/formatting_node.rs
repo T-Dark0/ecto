@@ -1,26 +1,21 @@
 use super::common::Validity;
 use crate::scope_tree::{
     ast::{
-        Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed,
-        Scope, UseStmt,
+        FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
+        UseStmt,
     },
     span::Span,
 };
 use std::fmt::Write;
 use typed_arena::Arena;
 
-pub fn to_formatting_node<'arena, N>(
-    parsed: Parsed<N>,
-    arena: &mut FormattingArena<'arena>,
-) -> FormattingNode<'arena>
+pub fn to_formatting_node<'arena, N>(parsed: Parsed<N>, arena: &mut FormattingArena<'arena>) -> FormattingNode<'arena>
 where
     N: ToFormattingNode,
 {
     match &parsed.outcome {
         Outcome::Valid(node) => node.to_formatting_node(NodeContext::valid(parsed.span), arena),
-        Outcome::Recovered(node) => {
-            node.to_formatting_node(NodeContext::recovered(parsed.span), arena)
-        }
+        Outcome::Recovered(node) => node.to_formatting_node(NodeContext::recovered(parsed.span), arena),
         Outcome::Error(kind) => node_kind_to_formatting_node(*kind, parsed.span, arena),
     }
 }
@@ -32,14 +27,21 @@ fn node_kind_to_formatting_node<'arena>(
     let name = match kind {
         NodeKind::Scope => "Scope!",
         NodeKind::UseStmt => "UseStmt!",
+        NodeKind::FnDef => "FnDef!",
+        NodeKind::Ident => "Ident!",
         NodeKind::OpDef => "OpDef!",
-        NodeKind::OpParts => "OpParts!",
         NodeKind::OpPart => "OpPart!",
+        NodeKind::Argument => "Argument!",
+        NodeKind::LazyArgument => "LazyArgument!",
+        NodeKind::Literal => "Literal!",
         NodeKind::Variadic => "Variadic!",
+        NodeKind::OpParts => "OpParts!",
         NodeKind::OpBindings => "OpBindings!",
         NodeKind::OpBinding => "OpBinding!",
         NodeKind::OpArrow => "OpArrow!",
-        NodeKind::Ident => "Ident!",
+        NodeKind::OpArrowLeft => "OpArrowLeft!",
+        NodeKind::OpArrowRight => "OpArrowRight!",
+        NodeKind::FnBody => "FnBody!",
     };
     FormattingNode {
         text: arena.name_and_span(name, span),
@@ -168,9 +170,7 @@ impl<'of, 'arena> ChildBuilder<'of, 'arena> {
     pub fn finish(&mut self) -> Children<'arena> {
         let own_children_start = self.arena.children_stack_frame_sizes.pop().unwrap();
         Children::Sometimes(
-            self.arena
-                .children
-                .alloc_extend(self.arena.children_scratch_buffer.drain(own_children_start..)),
+            self.arena.children.alloc_extend(self.arena.children_scratch_buffer.drain(own_children_start..)),
         )
     }
 }
@@ -193,7 +193,7 @@ impl ToFormattingNode for Scope {
             children: arena
                 .children_builder()
                 .children(&self.uses)
-                .children(&self.op_defs)
+                .children(&self.fn_defs)
                 .children(&self.children)
                 .finish(),
         }
@@ -208,6 +208,37 @@ impl ToFormattingNode for UseStmt {
         FormattingNode {
             text: arena.name_and_context("UseStmt", ctx),
             children: arena.children_builder().children(&self.path).finish(),
+        }
+    }
+}
+impl ToFormattingNode for FnDef {
+    fn to_formatting_node<'arena>(
+        &self,
+        ctx: NodeContext,
+        arena: &mut FormattingArena<'arena>,
+    ) -> FormattingNode<'arena> {
+        FormattingNode {
+            text: arena.name_and_context("FnDef", ctx),
+            children: {
+                let mut builder = arena.children_builder();
+                builder.child(&self.name);
+                if let Some(op_def) = &self.op_def {
+                    builder.child(op_def);
+                }
+                builder.children(&self.bodies).finish()
+            },
+        }
+    }
+}
+impl ToFormattingNode for FnBody {
+    fn to_formatting_node<'arena>(
+        &self,
+        ctx: NodeContext,
+        arena: &mut FormattingArena<'arena>,
+    ) -> FormattingNode<'arena> {
+        FormattingNode {
+            text: arena.name_and_context("FnBody", ctx),
+            children: arena.children_builder().children(&self.args).child(&self.body).finish(),
         }
     }
 }
@@ -243,12 +274,7 @@ impl ToFormattingNode for OpBinding {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("OpBinding", ctx),
-            children: arena
-                .children_builder()
-                .child(&self.lhs)
-                .child(&self.arrow)
-                .child(&self.rhs)
-                .finish(),
+            children: arena.children_builder().child(&self.lhs).child(&self.arrow).child(&self.rhs).finish(),
         }
     }
 }

@@ -1,10 +1,10 @@
 use super::formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode};
 use crate::scope_tree::ast::{
-    Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Scope, UseStmt,
+    FnBody, FnDef, Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Scope, UseStmt,
 };
 use std::fmt::{self, Debug};
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Validity {
     Valid,
     Recovered,
@@ -13,7 +13,10 @@ pub enum Validity {
 
 #[derive(PartialEq, Eq)]
 pub enum AnyNode {
+    Scope(Scope),
     UseStmt(UseStmt),
+    FnDef(FnDef),
+    FnBody(FnBody),
     Ident(Ident),
     OpDef(OpDef),
     OpParts(OpParts),
@@ -21,7 +24,6 @@ pub enum AnyNode {
     OpBindings(OpBindings),
     OpBinding(OpBinding),
     OpArrow(OpArrow),
-    Scope(Scope),
 }
 macro_rules! impl_traits {
     ($($node:ident)*) => {
@@ -40,27 +42,18 @@ macro_rules! impl_traits {
                 }
             }
         )*
+        impl ToFormattingNode for AnyNode {
+            fn to_formatting_node<'arena>(
+                &self,
+                ctx: NodeContext,
+                arena: &mut FormattingArena<'arena>,
+            ) -> FormattingNode<'arena> {
+                match self {
+                    $( Self::$node(node) => node.to_formatting_node(ctx, arena) ),*
+                }
+            }
+        }
 
     };
 }
-impl_traits! {Scope UseStmt Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow }
-
-impl ToFormattingNode for AnyNode {
-    fn to_formatting_node<'arena>(
-        &self,
-        ctx: NodeContext,
-        arena: &mut FormattingArena<'arena>,
-    ) -> FormattingNode<'arena> {
-        match self {
-            AnyNode::UseStmt(u) => u.to_formatting_node(ctx, arena),
-            AnyNode::Ident(i) => i.to_formatting_node(ctx, arena),
-            AnyNode::OpDef(o) => o.to_formatting_node(ctx, arena),
-            AnyNode::OpParts(o) => o.to_formatting_node(ctx, arena),
-            AnyNode::OpPart(o) => o.to_formatting_node(ctx, arena),
-            AnyNode::OpBindings(o) => o.to_formatting_node(ctx, arena),
-            AnyNode::OpBinding(o) => o.to_formatting_node(ctx, arena),
-            AnyNode::OpArrow(o) => o.to_formatting_node(ctx, arena),
-            AnyNode::Scope(s) => s.to_formatting_node(ctx, arena),
-        }
-    }
-}
+impl_traits! {Scope UseStmt FnDef FnBody Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow }

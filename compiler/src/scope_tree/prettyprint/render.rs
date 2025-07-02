@@ -1,6 +1,4 @@
-use super::formatting_node::{
-    to_formatting_node, Children, FormattingArena, FormattingNode, ToFormattingNode,
-};
+use super::formatting_node::{Children, FormattingArena, FormattingNode, ToFormattingNode, to_formatting_node};
 use crate::scope_tree::ast::Parsed;
 use std::marker::PhantomData;
 use typed_arena::Arena;

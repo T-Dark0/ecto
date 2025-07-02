@@ -1,360 +1,412 @@
 use super::common::{AnyNode, Validity};
 use crate::scope_tree::{
     ast::{
-        Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope,
-        UseStmt,
+        FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope, UseStmt,
     },
     span::Span,
 };
 use logos::Logos;
+use macro_rules_attribute::macro_rules_attribute;
 use std::{
     fmt::Display,
-    ops::Range,
-    slice,
+    str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
 };
 
 pub fn parse(pretty: &str) -> Result<Parsed<AnyNode>, Error> {
-    parse_any_node(&mut Parser {
-        lexer: Token::lexer(pretty),
-        peeked: None,
-    })
+    NodeStream::new(pretty).parse_any_node()
 }
 
-#[derive(Debug, Clone)]
-pub struct Error {
-    pub kind: ErrorKind,
-    pub span: Span,
+struct NodeStream<'source> {
+    lexer: Lexer<'source>,
 }
-#[derive(Debug, Clone, Copy)]
-pub enum ErrorKind {
-    LexError,
-    UnexpectedEof,
-    UnexpectedToken {
-        expected: &'static [Token],
-        got: Token,
-    },
-    InvalidSpanStart,
-    InvalidSpanLen,
-    MissingOpParts,
-    MissingOpBindings,
+struct Node<'stream, 'source> {
+    meta: NodeMetadata,
+    contents: Option<&'stream mut NodeStream<'source>>,
 }
-impl Error {
-    fn lex_error(span: Span) -> Self {
-        Self {
-            kind: ErrorKind::LexError,
-            span,
-        }
-    }
-    fn unexpected_token(span: Span, expected: &'static [Token], got: Token) -> Self {
-        Self {
-            kind: ErrorKind::UnexpectedToken { expected, got },
-            span,
-        }
-    }
-    fn unexpected_eof(span: Span) -> Self {
-        Self {
-            kind: ErrorKind::UnexpectedEof,
-            span,
-        }
-    }
-    fn invalid_span_start(span: Span) -> Self {
-        Self {
-            kind: ErrorKind::InvalidSpanStart,
-            span,
-        }
-    }
-    fn invalid_span_len(span: Span) -> Self {
-        Self {
-            kind: ErrorKind::InvalidSpanLen,
-            span,
-        }
-    }
-    fn missing_op_parts(span: Span) -> Self {
-        Self {
-            kind: ErrorKind::MissingOpParts,
-            span,
-        }
-    }
-    fn missing_op_bindings(span: Span) -> Self {
-        Self {
-            kind: ErrorKind::MissingOpBindings,
-            span,
-        }
-    }
+#[derive(Clone, Copy)]
+struct NodeMetadata {
+    span: Span,
+    kind: NodeKind,
+    validity: Validity,
+    location: SourceLocation,
 }
-
-fn parse_any_node(parser: &mut Parser<'_>) -> Result<Parsed<AnyNode>, Error> {
-    enter("parse_any_node", parser.lexer.remainder());
-    let out = Ok(select! { parser, |tok, expected|
-        next Token::Scope => parse_scope(parser)?.map(AnyNode::Scope),
-        next Token::UseStmt => parse_use_stmt(parser)?.map(AnyNode::UseStmt),
-        next Token::Ident => parse_ident(parser)?.map(AnyNode::Ident),
-        next Token::OpDef => parse_op_def(parser)?.map(AnyNode::OpDef),
-        next Token::OpParts => parse_op_parts(parser)?.map(AnyNode::OpParts),
-        next Token::OpPart => parse_op_part(parser)?.map(AnyNode::OpPart),
-        next Token::Argument => parse_argument(parser)?.map(AnyNode::OpPart),
-        next Token::LazyArgument => parse_lazy_argument(parser)?.map(AnyNode::OpPart),
-        next Token::Literal => parse_literal(parser)?.map(AnyNode::OpPart),
-        next Token::Variadic => parse_variadic(parser)?.map(AnyNode::OpPart),
-        next Token::OpBindings => parse_op_bindings(parser)?.map(AnyNode::OpBindings),
-        next Token::OpBinding => parse_op_binding(parser)?.map(AnyNode::OpBinding),
-        next Token::OpArrowLeft => parse_op_arrow_left(parser)?.map(AnyNode::OpArrow),
-        next Token::OpArrowRight => parse_op_arrow_right(parser)?.map(AnyNode::OpArrow),
-        next else => return Err(Error::unexpected_token(parser.span(), expected, tok)),
-    });
-    exit("parse_any_node", parser.lexer.remainder());
-    out
-}
-fn parse_scope(parser: &mut Parser<'_>) -> Result<Parsed<Scope>, Error> {
-    enter("parse_scope", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::Scope, |parser| {
-        parser.expect(&Token::OpenRoundParen)?;
+#[derive(Clone, Copy)]
+struct SourceLocation(Span);
+impl<'source> NodeStream<'source> {
+    fn new(source: &'source str) -> Self {
+        Self {
+            lexer: Lexer::new(source),
+        }
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_any_node(&mut self) -> Result<Parsed<AnyNode>, Error> {
+        let node = self.next_or_err()?;
+        match node.kind() {
+            NodeKind::Scope => node.parse(|c| c.parse_scope().map(AnyNode::Scope)),
+            NodeKind::UseStmt => node.parse(|c| c.parse_use_stmt().map(AnyNode::UseStmt)),
+            NodeKind::FnDef => node.parse(|c| c.parse_fn_def().map(AnyNode::FnDef)),
+            NodeKind::Ident => node.parse(|c| c.parse_ident().map(AnyNode::Ident)),
+            NodeKind::OpDef => node.parse(|c| c.parse_op_def().map(AnyNode::OpDef)),
+            NodeKind::OpParts => node.parse(|c| c.parse_op_parts().map(AnyNode::OpParts)),
+            NodeKind::Argument => node.parse(|c| c.parse_argument().map(AnyNode::OpPart)),
+            NodeKind::LazyArgument => node.parse(|c| c.parse_lazy_argument().map(AnyNode::OpPart)),
+            NodeKind::OpPart => node.parse_error(NodeKind::OpPart).map(|p| p.map(AnyNode::OpPart)),
+            NodeKind::Literal => node.parse(|c| c.parse_literal().map(AnyNode::OpPart)),
+            NodeKind::Variadic => node.parse(|c| c.parse_variadic().map(AnyNode::OpPart)),
+            NodeKind::OpBindings => node.parse(|c| c.parse_op_bindings().map(AnyNode::OpBindings)),
+            NodeKind::OpBinding => node.parse(|c| c.parse_op_binding().map(AnyNode::OpBinding)),
+            NodeKind::OpArrow => node.parse_error(NodeKind::OpArrow).map(|p| p.map(AnyNode::OpArrow)),
+            NodeKind::OpArrowLeft => node.parse(|c| c.parse_op_arrow_left().map(AnyNode::OpArrow)),
+            NodeKind::OpArrowRight => node.parse(|c| c.parse_op_arrow_right().map(AnyNode::OpArrow)),
+            NodeKind::FnBody => node.parse(|c| c.parse_fn_body().map(AnyNode::FnBody)),
+        }
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_scope(&mut self) -> Result<Scope, Error> {
         let mut uses = Vec::new();
-        let mut op_defs = Vec::new();
+        let mut fn_defs = Vec::new();
         let mut children = Vec::new();
-        loop {
-            select! { parser, |tok, expected|
-                next Token::UseStmt => uses.push(parse_use_stmt(parser)?),
-                next Token::OpDef => op_defs.push(parse_op_def(parser)?),
-                next Token::Scope => children.push(parse_scope(parser)?),
-                // FIXME: If I find an error here, what is it an error _in_?
-                next Token::CloseRoundParen => break,
-                next else => return Err(Error::unexpected_token(parser.span(), expected, tok)),
+        while let Some(node) = self.next()? {
+            match node.kind() {
+                NodeKind::UseStmt => uses.push(node.parse(Self::parse_use_stmt)?),
+                NodeKind::FnDef => fn_defs.push(node.parse(Self::parse_fn_def)?),
+                NodeKind::Scope => children.push(node.parse(Self::parse_scope)?),
+                _ => {
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())));
+                }
             }
         }
         Ok(Scope {
             uses,
-            op_defs,
+            fn_defs,
             children,
         })
-    });
-    exit("parse_scope", parser.lexer.remainder());
-    out
-}
-fn parse_use_stmt(lexer: &mut Parser<'_>) -> Result<Parsed<UseStmt>, Error> {
-    span_and_validity(lexer, NodeKind::UseStmt, |lexer| {
-        lexer.expect(&Token::OpenRoundParen)?;
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_use_stmt(&mut self) -> Result<UseStmt, Error> {
         let mut path = Vec::new();
-        loop {
-            select! { lexer, |tok, _|
-                next Token::CloseRoundParen => break,
-                peek else => path.push(parse_ident(lexer)?),
-            }
+        while let Some(node) = self.next()? {
+            path.push(node.parse_full(NodeKind::Ident, Self::parse_ident)?);
         }
         Ok(UseStmt { path })
-    })
-}
-fn parse_ident(lexer: &mut Parser<'_>) -> Result<Parsed<Ident>, Error> {
-    let ident = select! { lexer, |tok, expected|
-        next Token::Ident => Ident,
-        next else => return Err(Error::unexpected_token(lexer.span(), expected, tok)),
-    };
-    span_and_validity(lexer, NodeKind::Ident, |_| Ok(ident))
-}
-fn parse_op_def(parser: &mut Parser<'_>) -> Result<Parsed<OpDef>, Error> {
-    enter("parse_op_def", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::OpDef, |lexer| {
-        lexer.expect(&Token::OpenRoundParen)?;
-        let mut parts = None;
-        let mut bindings = None;
-        loop {
-            select! { lexer, |tok, expected|
-                next Token::OpParts => parts = Some(parse_op_parts(lexer)?),
-                next Token::OpBindings => bindings = Some(parse_op_bindings(lexer)?),
-                next Token::CloseRoundParen => break,
-                next else => return Err(Error::unexpected_token(lexer.span(), expected, tok))
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_fn_def(&mut self) -> Result<FnDef, Error> {
+        let name = self.next_or_err()?.parse_full(NodeKind::Ident, Self::parse_ident)?;
+        let mut op_def = None;
+        let mut bodies = Vec::new();
+        while let Some(node) = self.next()? {
+            match node.kind() {
+                NodeKind::OpDef if op_def.is_none() => op_def = Some(node.parse(Self::parse_op_def)?),
+                NodeKind::OpDef => return Err(Error::new(node.span(), ErrorKind::DuplicateOpDef)),
+                NodeKind::FnBody => bodies.push(node.parse(Self::parse_fn_body)?),
+                _ => {
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())));
+                }
             }
         }
-        let parts = parts.ok_or(Error::missing_op_parts(lexer.span()))?;
-        let bindings = bindings.ok_or(Error::missing_op_bindings(lexer.span()))?;
+        Ok(FnDef { name, op_def, bodies })
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_ident(&mut self) -> Result<Ident, Error> {
+        Ok(Ident)
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_op_def(&mut self) -> Result<OpDef, Error> {
+        let parts = self.next_or_err()?.parse_full(NodeKind::OpParts, Self::parse_op_parts)?;
+        let bindings = self.next_or_err()?.parse_full(NodeKind::OpBindings, Self::parse_op_bindings)?;
         Ok(OpDef { parts, bindings })
-    });
-    exit("parse_op_def", parser.lexer.remainder());
-    out
-}
-fn parse_op_parts(parser: &mut Parser<'_>) -> Result<Parsed<OpParts>, Error> {
-    enter("parse_op_parts", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::OpParts, |lexer| {
-        //FIXME: When being called for `OpPart::Variadic`, the "OpParts` token has yet to be eaten
-        lexer.expect(&Token::OpenRoundParen)?;
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_op_parts(&mut self) -> Result<OpParts, Error> {
         let mut parts = Vec::new();
-        loop {
-            select! { lexer, |tok, _|
-                next Token::CloseRoundParen => break,
-                peek else => parts.push(parse_op_part(lexer)?),
+        while let Some(node) = self.next()? {
+            match node.kind() {
+                NodeKind::Argument => parts.push(node.parse(Self::parse_argument)?),
+                NodeKind::LazyArgument => parts.push(node.parse(Self::parse_lazy_argument)?),
+                NodeKind::Literal => parts.push(node.parse(Self::parse_literal)?),
+                NodeKind::Variadic => parts.push(node.parse(Self::parse_variadic)?),
+                _ => {
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())));
+                }
             }
         }
         Ok(OpParts(parts))
-    });
-    exit("parse_op_parts", parser.lexer.remainder());
-    out
-}
-fn parse_op_part(parser: &mut Parser<'_>) -> Result<Parsed<OpPart>, Error> {
-    select! { parser, |tok, expected|
-        next Token::Argument => parse_argument(parser),
-        next Token::LazyArgument => parse_lazy_argument(parser),
-        next Token::Literal => parse_literal(parser),
-        next Token::Variadic => parse_variadic(parser),
-        next else => Err(Error::unexpected_token(parser.span(), expected, tok)),
     }
-}
-fn parse_argument(parser: &mut Parser<'_>) -> Result<Parsed<OpPart>, Error> {
-    enter("parse_argument", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::OpPart, |_| Ok(OpPart::Argument));
-    exit("parse_argument", parser.lexer.remainder());
-    out
-}
-fn parse_lazy_argument(parser: &mut Parser<'_>) -> Result<Parsed<OpPart>, Error> {
-    span_and_validity(parser, NodeKind::OpPart, |_| Ok(OpPart::LazyArgument))
-}
-fn parse_literal(parser: &mut Parser<'_>) -> Result<Parsed<OpPart>, Error> {
-    span_and_validity(parser, NodeKind::OpPart, |_| Ok(OpPart::Literal))
-}
-fn parse_variadic(parser: &mut Parser<'_>) -> Result<Parsed<OpPart>, Error> {
-    enter("parse_variadic", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::OpPart, |parser| {
-        parser.expect(&Token::OpenRoundParen)?;
-        parser.expect(&Token::OpParts)?;
-        let parts = parse_op_parts(parser)?;
-        parser.expect(&Token::CloseRoundParen)?;
-        Ok(OpPart::Variadic(parts))
-    });
-    exit("parse_variadic", parser.lexer.remainder());
-    out
-}
-fn parse_op_bindings(parser: &mut Parser<'_>) -> Result<Parsed<OpBindings>, Error> {
-    enter("parse_op_bindings", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::OpBindings, |parser| {
-        parser.expect(&Token::OpenRoundParen)?;
+    #[macro_rules_attribute(trace)]
+    fn parse_argument(&mut self) -> Result<OpPart, Error> {
+        Ok(OpPart::Argument)
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_lazy_argument(&mut self) -> Result<OpPart, Error> {
+        Ok(OpPart::LazyArgument)
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_literal(&mut self) -> Result<OpPart, Error> {
+        Ok(OpPart::Literal)
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_variadic(&mut self) -> Result<OpPart, Error> {
+        self.next_or_err()?.parse_full(NodeKind::OpParts, Self::parse_op_parts).map(OpPart::Variadic)
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_op_bindings(&mut self) -> Result<OpBindings, Error> {
         let mut bindings = Vec::new();
-        loop {
-            select! { parser, |tok, expected|
-                next Token::OpBinding => bindings.push(parse_op_binding(parser)?),
-                next Token::CloseRoundParen => break,
-                next else => return Err(Error::unexpected_token(parser.span(), expected, tok))
-            }
+        while let Some(node) = self.next()? {
+            bindings.push(node.parse_full(NodeKind::OpBinding, Self::parse_op_binding)?);
         }
         Ok(OpBindings(bindings))
-    });
-    exit("parse_op_bindings", parser.lexer.remainder());
-    out
-}
-fn parse_op_binding(parser: &mut Parser<'_>) -> Result<Parsed<OpBinding>, Error> {
-    enter("parse_op_binding", parser.lexer.remainder());
-    let out = span_and_validity(parser, NodeKind::OpBinding, |parser| {
-        parser.expect(&Token::OpenRoundParen)?;
-        let lhs = parse_ident(parser)?;
-        let arrow = select! { parser, |tok, expected|
-            next Token::OpArrowLeft => parse_op_arrow_left(parser)?,
-            next Token::OpArrowRight => parse_op_arrow_right(parser)?,
-            next else => return Err(Error::unexpected_token(parser.span(), expected, tok))
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_op_binding(&mut self) -> Result<OpBinding, Error> {
+        let lhs = self.next_or_err()?.parse_full(NodeKind::Ident, Self::parse_ident)?;
+        let arrow = {
+            let node = self.next_or_err()?;
+            match node.kind() {
+                NodeKind::OpArrowLeft => node.parse(Self::parse_op_arrow_left)?,
+                NodeKind::OpArrowRight => node.parse(Self::parse_op_arrow_right)?,
+                _ => {
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())))?;
+                }
+            }
         };
-        let rhs = parse_ident(parser)?;
-        parser.expect(&Token::CloseRoundParen)?;
+        let rhs = self.next_or_err()?.parse_full(NodeKind::Ident, Self::parse_ident)?;
         Ok(OpBinding { lhs, arrow, rhs })
-    });
-    exit("parse_op_binding", parser.lexer.remainder());
-    out
-}
-fn parse_op_arrow_left(lexer: &mut Parser<'_>) -> Result<Parsed<OpArrow>, Error> {
-    span_and_validity(lexer, NodeKind::OpArrow, |_| Ok(OpArrow::Left))
-}
-fn parse_op_arrow_right(lexer: &mut Parser<'_>) -> Result<Parsed<OpArrow>, Error> {
-    span_and_validity(lexer, NodeKind::OpArrow, |_| Ok(OpArrow::Right))
-}
-
-fn span_and_validity<'source, F, R>(
-    lexer: &mut Parser<'source>,
-    kind: NodeKind,
-    f: F,
-) -> Result<Parsed<R>, Error>
-where
-    F: FnOnce(&mut Parser<'source>) -> Result<R, Error>,
-{
-    let validity = parse_validity(lexer)?;
-    let span = parse_span(lexer)?;
-    Ok(match validity {
-        Validity::Valid => Parsed::valid(span, f(lexer)?),
-        Validity::Recovered => Parsed::recovered(span, f(lexer)?),
-        Validity::Error => Parsed::error(span, kind),
-    })
-}
-fn parse_validity(parser: &mut Parser<'_>) -> Result<Validity, Error> {
-    Ok(select! { parser, |tok, _|
-        next Token::Star => Validity::Recovered,
-        next Token::ExclMark => Validity::Error,
-        peek else => Validity::Valid
-    })
-}
-fn parse_span(parser: &mut Parser<'_>) -> Result<Span, Error> {
-    parser.expect(&Token::OpenSquareParen)?;
-    let start = select! { parser, |tok, expected|
-        next Token::Number => parser.slice().parse().map_err(|_|Error::invalid_span_start(parser.span()))?,
-        next else => return Err(Error::unexpected_token(parser.span(),expected,tok)),
-    };
-    parser.expect(&Token::Comma)?;
-    let len = select! { parser, |got, expected|
-        next Token::Number => parser.slice().parse().map_err(|_| Error::invalid_span_len(parser.span()))?,
-        next else => return Err(Error::unexpected_token(parser.span(), expected, got)),
-    };
-    parser.expect(&Token::CloseSquareParen)?;
-    Ok(Span { start, len })
-}
-
-struct Parser<'source> {
-    lexer: logos::Lexer<'source, Token>,
-    peeked: Option<Result<Token, Error>>,
-}
-impl<'source> Parser<'source> {
-    fn next(&mut self) -> Result<Token, Error> {
-        self.peeked.take().unwrap_or_else(|| Self::raw_next(&mut self.lexer))
     }
-    fn peek(&mut self) -> Result<&Token, Error> {
-        self.peeked
-            .get_or_insert_with(|| Self::raw_next(&mut self.lexer))
-            .as_ref()
-            .map_err(Clone::clone)
+    #[macro_rules_attribute(trace)]
+    fn parse_op_arrow_left(&mut self) -> Result<OpArrow, Error> {
+        Ok(OpArrow::Left)
     }
-    fn raw_next(lexer: &mut logos::Lexer<'_, Token>) -> Result<Token, Error> {
-        match lexer.next() {
-            Some(Ok(tok)) => Ok(tok),
-            Some(Err(())) => Err(Error::lex_error(Self::raw_span(lexer.span()))),
-            None => Err(Error::unexpected_eof(Self::raw_span(lexer.span()))),
+    #[macro_rules_attribute(trace)]
+    fn parse_op_arrow_right(&mut self) -> Result<OpArrow, Error> {
+        Ok(OpArrow::Right)
+    }
+    #[macro_rules_attribute(trace)]
+    fn parse_fn_body(&mut self) -> Result<FnBody, Error> {
+        let mut args = Vec::new();
+        let body = loop {
+            let Some(node) = self.next()? else { break None };
+            match node.kind() {
+                NodeKind::Ident => args.push(node.parse(Self::parse_ident)?),
+                _ => break Some(node),
+            }
+        };
+        let Some(body) = body else {
+            return Err(Error::new(
+                self.lexer.last_span.empty_after(),
+                ErrorKind::DisembodiedFnBody,
+            ));
+        };
+        let body = body.parse_full(NodeKind::Scope, Self::parse_scope)?;
+        Ok(FnBody { args, body })
+    }
+
+    fn next(&mut self) -> Result<Option<Node<'_, 'source>>, Error> {
+        let peeked = self.lexer.peek()?;
+        if matches!(peeked.kind, TokenKind::Eof | TokenKind::CloseRoundParen) {
+            return Ok(None);
+        }
+        let kind = self.parse_kind()?;
+        let validity = self.parse_validity()?;
+        let location = self.parse_location()?;
+        let end_span = self.lexer.last_span;
+        let contents = self.parse_contents()?;
+        Ok(Some(Node {
+            meta: NodeMetadata {
+                span: peeked.span.around(end_span),
+                kind,
+                validity,
+                location,
+            },
+            contents,
+        }))
+    }
+    fn next_or_err(&mut self) -> Result<Node<'_, 'source>, Error> {
+        let last_span = self.lexer.last_span;
+        self.next()?.ok_or_else(|| Error::new(last_span.empty_after(), ErrorKind::UnexpectedEof))
+    }
+    fn parse_kind(&mut self) -> Result<NodeKind, Error> {
+        let tok = self.lexer.next()?;
+        Ok(match tok.kind {
+            TokenKind::UseStmt => NodeKind::UseStmt,
+            TokenKind::Ident => NodeKind::Ident,
+            TokenKind::FnDef => NodeKind::FnDef,
+            TokenKind::FnBody => NodeKind::FnBody,
+            TokenKind::OpDef => NodeKind::OpDef,
+            TokenKind::OpPart => NodeKind::OpPart,
+            TokenKind::OpParts => NodeKind::OpParts,
+            TokenKind::Argument => NodeKind::Argument,
+            TokenKind::LazyArgument => NodeKind::LazyArgument,
+            TokenKind::Literal => NodeKind::Literal,
+            TokenKind::Variadic => NodeKind::Variadic,
+            TokenKind::OpBindings => NodeKind::OpBindings,
+            TokenKind::OpBinding => NodeKind::OpBinding,
+            TokenKind::OpArrow => NodeKind::OpArrow,
+            TokenKind::OpArrowLeft => NodeKind::OpArrowLeft,
+            TokenKind::OpArrowRight => NodeKind::OpArrowRight,
+            TokenKind::Scope => NodeKind::Scope,
+            _ => return Err(Error::new(tok.span, ErrorKind::ExpectedNodeKind)),
+        })
+    }
+    fn parse_validity(&mut self) -> Result<Validity, Error> {
+        let tok = self.lexer.peek()?;
+        Ok(match tok.kind {
+            TokenKind::Star => {
+                self.lexer.next()?;
+                Validity::Recovered
+            }
+            TokenKind::ExclMark => {
+                self.lexer.next()?;
+                Validity::Error
+            }
+            _ => Validity::Valid,
+        })
+    }
+    fn parse_location(&mut self) -> Result<SourceLocation, Error> {
+        use {ErrorKind as E, TokenKind as K};
+        self.expect(K::OpenSquareParen, E::ExpectedOpenSquareParen)?;
+        let start = self.expect_num()?;
+        self.expect(K::Comma, E::ExpectedComma)?;
+        let len = self.expect_num()?;
+        self.expect(K::CloseSquareParen, E::ExpectedCloseSquareParen)?;
+        Ok(SourceLocation(Span::new(start, len)))
+    }
+    fn parse_contents(&mut self) -> Result<Option<&mut NodeStream<'source>>, Error> {
+        let tok = self.lexer.peek()?;
+        match tok.kind {
+            TokenKind::OpenRoundParen => {
+                self.lexer.next()?;
+                Ok(Some(self))
+            }
+            _ => Ok(None),
         }
     }
-    fn expect(&mut self, tok: &'static Token) -> Result<(), Error> {
-        match self.next()? {
-            next if next == *tok => Ok(()),
-            next => Err(Error::unexpected_token(
-                self.span(),
-                slice::from_ref(tok),
-                next,
-            )),
-        }
+    fn expect(&mut self, expected: TokenKind, err: ErrorKind) -> Result<(), Error> {
+        self.expect_any([expected], err)
     }
-    fn slice(&self) -> &'source str {
-        self.lexer.slice()
+    fn expect_any<const N: usize>(&mut self, expected: [TokenKind; N], err: ErrorKind) -> Result<(), Error> {
+        let tok = self.lexer.next()?;
+        if !expected.contains(&tok.kind) {
+            return Err(Error::new(tok.span, err));
+        };
+        Ok(())
+    }
+    fn expect_num<T: FromStr>(&mut self) -> Result<T, Error> {
+        self.expect(TokenKind::Number, ErrorKind::ExpectedNumber)?;
+        self.lexer.lexer.slice().parse().map_err(|_| {
+            Error::new(
+                Span::from_usize_range(self.lexer.lexer.span()),
+                ErrorKind::ExpectedNumber,
+            )
+        })
+    }
+}
+impl<'stream, 'source> Node<'stream, 'source> {
+    fn kind(&self) -> NodeKind {
+        self.meta.kind
     }
     fn span(&self) -> Span {
-        Self::raw_span(self.lexer.span())
+        self.meta.span
     }
-    fn raw_span(span: Range<usize>) -> Span {
-        let Range { start, end } = span;
-        Span {
-            start: start as u32,
-            len: (end - start) as u16,
+    fn validity(&self) -> Validity {
+        self.meta.validity
+    }
+    fn location(&self) -> SourceLocation {
+        self.meta.location
+    }
+    fn parse<F, R>(self, parser: F) -> Result<Parsed<R>, Error>
+    where
+        F: FnOnce(&mut NodeStream<'source>) -> Result<R, Error>,
+    {
+        let contents = match self.contents {
+            Some(c) => c,
+            None => &mut NodeStream::new(""),
+        };
+        let parsed = match self.meta.validity {
+            Validity::Valid => Parsed::valid(self.meta.location.0, parser(contents)?),
+            Validity::Recovered => Parsed::recovered(self.meta.location.0, parser(contents)?),
+            Validity::Error => Parsed::error(self.meta.location.0, self.meta.kind),
+        };
+        use TokenKind as K;
+        contents.expect_any([K::CloseRoundParen, K::Eof], ErrorKind::UnclosedNode)?;
+        Ok(parsed)
+    }
+    fn parse_full<F, R>(self, kind: NodeKind, parser: F) -> Result<Parsed<R>, Error>
+    where
+        F: FnOnce(&mut NodeStream<'source>) -> Result<R, Error>,
+    {
+        if self.kind() != kind {
+            return Err(Error::new(self.span(), ErrorKind::UnexpectedNode(self.kind())));
+        }
+        self.parse(parser)
+    }
+    fn parse_error<K>(self, kind: NodeKind) -> Result<Parsed<K>, Error> {
+        if self.validity() != Validity::Error {
+            return Err(Error::new(self.span(), ErrorKind::ExpectedError));
+        }
+        Ok(Parsed::error(self.location().0, kind))
+    }
+
+    fn reborrow<'a>(&'a mut self) -> Node<'a, 'source> {
+        Node {
+            meta: self.meta,
+            contents: self.contents.as_deref_mut(),
         }
     }
 }
 
+struct Lexer<'source> {
+    lexer: logos::Lexer<'source, TokenKind>,
+    peeked: Option<Result<Token, Error>>,
+    last_span: Span,
+}
+impl<'source> Lexer<'source> {
+    fn new(source: &'source str) -> Self {
+        Self {
+            lexer: TokenKind::lexer(source),
+            peeked: None,
+            last_span: Span::new(0, 0),
+        }
+    }
+    fn next(&mut self) -> Result<Token, Error> {
+        let tok = self.peeked.take().unwrap_or_else(|| Self::raw_next(&mut self.lexer))?;
+        self.last_span = tok.span;
+        Ok(tok)
+    }
+    fn peek(&mut self) -> Result<Token, Error> {
+        *self.peeked.get_or_insert_with(|| Self::raw_next(&mut self.lexer))
+    }
+    fn raw_next(lexer: &mut logos::Lexer<'source, TokenKind>) -> Result<Token, Error> {
+        let kind = lexer.next();
+        let span = Span::from_usize_range(lexer.span());
+        match kind {
+            Some(Ok(kind)) => Ok(Token { kind, span }),
+            Some(Err(())) => Err(Error::new(span, ErrorKind::LexError)),
+            None => Ok(Token {
+                kind: TokenKind::Eof,
+                span,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct Token {
+    kind: TokenKind,
+    span: Span,
+}
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Logos)]
 #[logos(skip r"[ \s\t\r\n]+")]
-enum Token {
+enum TokenKind {
     #[token("UseStmt")]
     UseStmt,
     #[token("Ident")]
     Ident,
+    #[token("FnDef")]
+    FnDef,
+    #[token("FnBody")]
+    FnBody,
     #[token("OpDef")]
     OpDef,
     #[token("OpParts")]
@@ -373,6 +425,8 @@ enum Token {
     OpBindings,
     #[token("OpBinding")]
     OpBinding,
+    #[token("OpArrow")]
+    OpArrow,
     #[token("OpArrowLeft")]
     OpArrowLeft,
     #[token("OpArrowRight")]
@@ -395,70 +449,59 @@ enum Token {
     OpenRoundParen,
     #[token(")")]
     CloseRoundParen,
+
+    Eof,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct Error {
+    pub kind: ErrorKind,
+    pub span: Span,
+}
+#[derive(Debug, Clone, Copy)]
+pub enum ErrorKind {
+    LexError,
+    UnexpectedEof,
+    ExpectedNodeKind,
+    ExpectedOpenSquareParen,
+    ExpectedNumber,
+    ExpectedComma,
+    ExpectedCloseSquareParen,
+    UnexpectedNode(NodeKind),
+    UnclosedNode,
+    DuplicateOpDef,
+    DisembodiedFnBody,
+    ExpectedError,
+}
+impl Error {
+    fn new(span: Span, kind: ErrorKind) -> Self {
+        Self { kind, span }
+    }
 }
 
-macro_rules! select {
-    ($lexer:ident, |$tok:ident, $expected:pat_param| $( $mode:ident $($($kind:ident)::*)|* => $body:expr ),* $(,)?) => {
-        select! { @expected [$( $mode $($($kind)::*)|* => $body ),*] [] [$lexer, $tok, $expected] $( # $($($kind)::*)|* ),* }
-    };
-
-    (
-        @expected [$($original:tt)*] [$($acc:tt)*] [$lexer:ident, $tok:ident, $expected:pat_param]
-        # else
-        $(, # $($($rkind:ident)::*)|* )*
-    ) => {
-        select! { @expected [$($original)*] [$($acc)*] [$lexer, $tok, $expected] $( # $($($rkind)::*)|* ),* }
-    };
-    (
-        @expected [$($original:tt)*] [$($acc:tt)*] [$lexer:ident, $tok:ident, $expected:pat_param]
-        # $($($fkind:ident)::*)|*
-        $(, # $($($rkind:ident)::*)|* )*
-    ) => {
-        select! { @expected [$($original)*] [$($acc)* $($($fkind)::*,)*] [$lexer, $tok, $expected] $( # $($($rkind)::*)|* ),* }
-    };
-    (
-        @expected [$( $mode:ident $($($kind:ident)::*)|* => $body:expr ),*] [$($acc:tt)*] [$lexer:ident, $tok:ident, $expected:pat_param]
-    ) => {{
-        let $tok = *$lexer.peek()?;
-        let $expected = &[$($acc)*];
-        match $tok {
-            $(
-                select! { @adapt-else $($($kind)::*)|* } => {
-                    select! ( @mode $mode {_ = $lexer.next()} {});
-                    $body
-                }
-            ),*
+macro_rules! trace {
+    (fn $name:ident($($args:tt)*) -> $ret:ty {$($body:tt)*}) => {
+        fn $name($($args)*) -> $ret {
+            enter(stringify!($name));
+            let out = { $($body)* }?;
+            exit(stringify!($name));
+            Ok(out)
         }
-    }};
-
-    (@mode next {$($next:tt)*} {$($peek:tt)*} ) => {
-        $($next)*
-    };
-    (@mode peek {$($next:tt)*} {$($peek:tt)*} ) => {
-        $($peek)*
-    };
-
-    (@adapt-else else) => {
-        _
-    };
-    (@adapt-else $($($kind:ident)::*)|*) => {
-        $($($kind)::*)|*
-    };
+    }
 }
-use select;
+use trace;
 
 static DEPTH: AtomicU64 = AtomicU64::new(0);
-fn enter(name: &str, remainder: &str) {
-    debug(format_args!("enter {name}: {remainder:?}"));
-    DEPTH.fetch_add(1, Ordering::Relaxed);
+fn enter(name: &str) {
+    debug(name);
+    let depth = DEPTH.fetch_add(1, Ordering::Relaxed);
 }
-fn exit(name: &str, remainder: &str) {
+fn exit(name: &str) {
     DEPTH.fetch_sub(1, Ordering::Relaxed);
-    debug(format_args!("exit {name}: {remainder:?}"));
+    debug(name);
 }
-fn debug<T: Display>(val: T) {
+fn debug<T: Display>(msg: T) {
     for _ in 0..DEPTH.load(Ordering::Relaxed) {
-        print!("    ");
+        print!("    ")
     }
-    println!("{val}")
+    println!("{msg}")
 }

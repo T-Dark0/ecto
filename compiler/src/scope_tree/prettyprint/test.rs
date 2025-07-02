@@ -22,14 +22,18 @@ fn scope_with_two_uses() {
 }
 
 #[test]
-fn one_of_each() {
+fn prettyprint_one_of_each() {
     test(
         "
             Scope[0, 0](
                 UseStmt[2, 2](Ident[3, 3] Ident[4, 4])
-                OpDef[5, 5](
-                    OpParts[6, 6](Argument[7, 7] Literal[8, 8] Argument[9, 9])
-                    OpBindings[10, 10](OpBinding[11, 11](Ident[12, 12] OpArrowLeft[13, 13] Ident[14, 14]))
+                FnDef[21, 21](
+                    Ident[22, 22]
+                    OpDef[5, 5](
+                        OpParts[6, 6](Argument[7, 7] Literal[8, 8] Argument[9, 9])
+                        OpBindings[10, 10](OpBinding[11, 11](Ident[12, 12] OpArrowLeft[13, 13] Ident[14, 14]))
+                    )
+                    FnBody[23, 23](Scope[24, 24]())
                 )
                 Scope[15, 15](UseStmt[17, 17](Ident[18, 18] Ident[19, 19] Ident[20, 20]))
             )
@@ -51,7 +55,7 @@ fn test(text: &str) {
             let start = range.start.saturating_sub(20);
             let end = Ord::clamp(range.end + 20, 0, text.len());
             panic!(
-                "{:#?}\n`{}`\n{}{}",
+                "{:#?}\n{:?}\n{}{}",
                 e,
                 &text[start..end],
                 " ".repeat(range.start - start + 1),

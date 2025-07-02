@@ -3,12 +3,20 @@ use crate::scope_tree::span::Span;
 #[derive(Debug, PartialEq, Eq)]
 pub struct Scope {
     pub uses: Vec<Parsed<UseStmt>>,
-    pub op_defs: Vec<Parsed<OpDef>>,
+    pub fn_defs: Vec<Parsed<FnDef>>,
     pub children: Vec<Parsed<Scope>>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct UseStmt {
     pub path: Vec<Parsed<Ident>>,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub struct Ident;
+#[derive(Debug, PartialEq, Eq)]
+pub struct FnDef {
+    pub name: Parsed<Ident>,
+    pub op_def: Option<Parsed<OpDef>>,
+    pub bodies: Vec<Parsed<FnBody>>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct OpDef {
@@ -38,28 +46,38 @@ pub enum OpArrow {
     Right,
 }
 #[derive(Debug, PartialEq, Eq)]
-pub struct Ident;
+pub struct FnBody {
+    pub args: Vec<Parsed<Ident>>,
+    pub body: Parsed<Scope>,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NodeKind {
     Scope,
     UseStmt,
+    FnDef,
+    Ident,
     OpDef,
     OpParts,
     OpPart,
+    Argument,
+    LazyArgument,
+    Literal,
     Variadic,
     OpBindings,
     OpBinding,
     OpArrow,
-    Ident,
+    OpArrowLeft,
+    OpArrowRight,
+    FnBody,
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone, Copy)]
 pub struct Parsed<T> {
     pub span: Span,
     pub outcome: Outcome<T>,
 }
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone, Copy)]
 pub enum Outcome<T> {
     Valid(T),
     Recovered(T),
