@@ -215,6 +215,73 @@ fn literal_path() {
     );
 }
 
+#[test]
+fn nested_function() {
+    test(
+        "
+        Scope[0, 134](FnDef[0, 134](
+            Ident[3, 3]
+            FnBody[30, 102](
+                Ident[32, 3]
+                Scope[48, 84](
+                    FnDef[48, 70](
+                        Ident[51, 3]
+                        FnBody[92, 16](Scope[97, 11](Scope[102, 6]()))
+                    )
+                    Scope[130, 2]()
+                )
+            )
+        ))
+        ",
+        r#"
+        fn foo (
+            : Foo -> Bar
+            = foo => 
+                fn bar (
+                    : () -> ()
+                    = => print("hi")
+                )
+                bar()
+        )
+        "#,
+    )
+}
+
+#[test]
+fn nested_function_named_op() {
+    test_errors(
+        "
+            Scope[0, 96](FnDef[0, 96](
+                Ident[3, 3]
+                FnBody[30, 64](
+                    Ident[32, 3]
+                    Scope[39, 55](FnDef[39, 55](
+                        Ident![50, 2]
+                        FnBody[80, 8](Ident[82, 1] Scope[87, 1]())
+                    ))
+                )
+            ))
+        ",
+        "
+            fn foo (
+                : Foo -> Bar
+                = foo => fn
+                    op (
+                    : a -> a
+                    = x => x
+                )
+            )
+        ",
+        &[Error {
+            kind: ErrorKind::UnexpectedToken {
+                expected: vec![TokenKind::Ident],
+                got: TokenKind::Op,
+            },
+            span: Span::new(50, 2),
+        }],
+    )
+}
+
 fn test(ast: &str, syntax: &str) {
     test_errors(ast, syntax, &[]);
 }
