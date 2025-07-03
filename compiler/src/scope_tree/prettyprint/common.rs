@@ -4,13 +4,6 @@ use crate::scope_tree::ast::{
 };
 use std::fmt::{self, Debug};
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Validity {
-    Valid,
-    Recovered,
-    Error,
-}
-
 #[derive(PartialEq, Eq)]
 pub enum AnyNode {
     Scope(Scope),

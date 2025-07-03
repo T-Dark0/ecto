@@ -1,16 +1,17 @@
-use super::common::{AnyNode, Validity};
+use super::common::AnyNode;
 use crate::scope_tree::{
     ast::{
         FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope, UseStmt,
+        Validity,
     },
     span::Span,
 };
 use logos::Logos;
 use macro_rules_attribute::macro_rules_attribute;
 use std::{
-    fmt::Display,
+    cell::Cell,
+    fmt::{self, Debug, Display},
     str::FromStr,
-    sync::atomic::{AtomicU64, Ordering},
 };
 
 pub fn parse(pretty: &str) -> Result<Parsed<AnyNode>, Error> {
@@ -73,7 +74,7 @@ impl<'source> NodeStream<'source> {
                 NodeKind::FnDef => fn_defs.push(node.parse(Self::parse_fn_def)?),
                 NodeKind::Scope => children.push(node.parse(Self::parse_scope)?),
                 _ => {
-                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())));
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.meta())));
                 }
             }
         }
@@ -102,7 +103,7 @@ impl<'source> NodeStream<'source> {
                 NodeKind::OpDef => return Err(Error::new(node.span(), ErrorKind::DuplicateOpDef)),
                 NodeKind::FnBody => bodies.push(node.parse(Self::parse_fn_body)?),
                 _ => {
-                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())));
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.meta())));
                 }
             }
         }
@@ -128,7 +129,7 @@ impl<'source> NodeStream<'source> {
                 NodeKind::Literal => parts.push(node.parse(Self::parse_literal)?),
                 NodeKind::Variadic => parts.push(node.parse(Self::parse_variadic)?),
                 _ => {
-                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())));
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.meta())));
                 }
             }
         }
@@ -167,7 +168,7 @@ impl<'source> NodeStream<'source> {
                 NodeKind::OpArrowLeft => node.parse(Self::parse_op_arrow_left)?,
                 NodeKind::OpArrowRight => node.parse(Self::parse_op_arrow_right)?,
                 _ => {
-                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.kind())))?;
+                    return Err(Error::new(node.span(), ErrorKind::UnexpectedNode(node.meta())))?;
                 }
             }
         };
@@ -303,6 +304,9 @@ impl<'source> NodeStream<'source> {
     }
 }
 impl<'stream, 'source> Node<'stream, 'source> {
+    fn meta(&self) -> NodeMetadata {
+        self.meta
+    }
     fn kind(&self) -> NodeKind {
         self.meta.kind
     }
@@ -337,7 +341,7 @@ impl<'stream, 'source> Node<'stream, 'source> {
         F: FnOnce(&mut NodeStream<'source>) -> Result<R, Error>,
     {
         if self.kind() != kind {
-            return Err(Error::new(self.span(), ErrorKind::UnexpectedNode(self.kind())));
+            return Err(Error::new(self.span(), ErrorKind::UnexpectedNode(self.meta())));
         }
         self.parse(parser)
     }
@@ -388,6 +392,20 @@ impl<'source> Lexer<'source> {
                 span,
             }),
         }
+    }
+}
+impl Debug for NodeMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let validity = match self.validity {
+            Validity::Valid => "",
+            Validity::Recovered => "*",
+            Validity::Error => "!",
+        };
+        write!(
+            f,
+            "{:?}{}{:?} (@ {:?})",
+            self.kind, validity, self.location.0, self.span
+        )
     }
 }
 
@@ -466,7 +484,7 @@ pub enum ErrorKind {
     ExpectedNumber,
     ExpectedComma,
     ExpectedCloseSquareParen,
-    UnexpectedNode(NodeKind),
+    UnexpectedNode(NodeMetadata),
     UnclosedNode,
     DuplicateOpDef,
     DisembodiedFnBody,
@@ -481,26 +499,28 @@ impl Error {
 macro_rules! trace {
     (fn $name:ident($($args:tt)*) -> $ret:ty {$($body:tt)*}) => {
         fn $name($($args)*) -> $ret {
-            enter(stringify!($name));
+            enter(concat!("enter ", stringify!($name)));
             let out = { $($body)* }?;
-            exit(stringify!($name));
+            exit(concat!("exit ", stringify!($name)));
             Ok(out)
         }
     }
 }
 use trace;
 
-static DEPTH: AtomicU64 = AtomicU64::new(0);
+thread_local! {
+    static DEPTH: Cell<u32> = const { Cell::new(0) };
+}
 fn enter(name: &str) {
     debug(name);
-    let depth = DEPTH.fetch_add(1, Ordering::Relaxed);
+    DEPTH.set(DEPTH.get() + 1);
 }
 fn exit(name: &str) {
-    DEPTH.fetch_sub(1, Ordering::Relaxed);
+    DEPTH.set(DEPTH.get() - 1);
     debug(name);
 }
 fn debug<T: Display>(msg: T) {
-    for _ in 0..DEPTH.load(Ordering::Relaxed) {
+    for _ in 0..DEPTH.get() {
         print!("    ")
     }
     println!("{msg}")

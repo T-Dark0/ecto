@@ -1,8 +1,7 @@
-use super::common::Validity;
 use crate::scope_tree::{
     ast::{
         FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        UseStmt,
+        UseStmt, Validity,
     },
     span::Span,
 };

@@ -19,6 +19,12 @@ impl Span {
     pub fn new_empty(start: u32) -> Self {
         Self { start, len: 0 }
     }
+    pub fn from_usize_range(range: Range<usize>) -> Self {
+        Self {
+            start: range.start as u32,
+            len: (range.end - range.start) as u16,
+        }
+    }
     pub fn around(self, rhs: Self) -> Self {
         let end = rhs.start + u32::from(rhs.len);
         Self {

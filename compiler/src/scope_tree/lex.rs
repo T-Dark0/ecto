@@ -20,7 +20,7 @@ pub enum TokenKind {
     #[token("=")]
     Equals,
     #[token("=>")]
-    RightFatArrow,
+    FatArrow,
     #[regex(r"\p{XID_Start}\p{XID_Continue}*")]
     Ident,
     #[token("_")]
@@ -69,8 +69,8 @@ pub struct Lexer<'source> {
 }
 enum LexerState {
     Normal,
-    Error { start: Span },
-    PostError { peeked: Token },
+    Error(Span),
+    PostError(Token),
 }
 impl<'source> Lexer<'source> {
     pub fn new(source: &'source str) -> Self {
@@ -92,26 +92,31 @@ impl<'source> Iterator for Lexer<'source> {
     type Item = Token;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let tok = self.raw_next()?;
             match self.state {
-                LexerState::Normal => match tok.kind {
-                    TokenKind::Error => {
-                        self.state = LexerState::Error { start: tok.span };
-                        continue;
+                LexerState::Normal => {
+                    let tok = self.raw_next()?;
+                    match tok.kind {
+                        TokenKind::Error => {
+                            self.state = LexerState::Error(tok.span);
+                            continue;
+                        }
+                        _ => break Some(tok),
                     }
-                    _ => break Some(tok),
-                },
-                LexerState::Error { start } => match tok.kind {
-                    TokenKind::Error => continue,
-                    _ => {
-                        self.state = LexerState::PostError { peeked: tok };
-                        break Some(Token {
-                            kind: TokenKind::Error,
-                            span: start.around(tok.span),
-                        });
+                }
+                LexerState::Error(span) => {
+                    let tok = self.raw_next()?;
+                    match tok.kind {
+                        TokenKind::Error => self.state = LexerState::Error(span.around(tok.span)),
+                        _ => {
+                            self.state = LexerState::PostError(tok);
+                            break Some(Token {
+                                kind: TokenKind::Error,
+                                span,
+                            });
+                        }
                     }
-                },
-                LexerState::PostError { peeked } => {
+                }
+                LexerState::PostError(peeked) => {
                     self.state = LexerState::Normal;
                     break Some(peeked);
                 }

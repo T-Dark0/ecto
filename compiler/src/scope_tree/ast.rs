@@ -1,4 +1,6 @@
-use crate::scope_tree::span::Span;
+use super::prettyprint::ToFormattingNode;
+use crate::scope_tree::{prettyprint, span::Span};
+use std::fmt::{self, Debug};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Scope {
@@ -72,24 +74,22 @@ pub enum NodeKind {
     FnBody,
 }
 
-#[derive(Debug, Eq, Clone, Copy)]
+#[derive(Eq, Clone, Copy)]
 pub struct Parsed<T> {
     pub span: Span,
     pub outcome: Outcome<T>,
 }
-#[derive(Debug, Eq, Clone, Copy)]
+#[derive(Eq, Clone, Copy)]
 pub enum Outcome<T> {
     Valid(T),
     Recovered(T),
     Error(NodeKind),
 }
-impl<T> Outcome<T> {
-    pub fn valid_into_recovered(self) -> Self {
-        match self {
-            Outcome::Valid(v) | Outcome::Recovered(v) => Outcome::Recovered(v),
-            Outcome::Error(k) => Outcome::Error(k),
-        }
-    }
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Validity {
+    Valid,
+    Recovered,
+    Error,
 }
 impl<T> Parsed<T> {
     pub fn valid(span: Span, node: T) -> Self {
@@ -137,12 +137,25 @@ impl<T> Parsed<T> {
         }
     }
 }
+impl<T: ToFormattingNode> Debug for Parsed<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&prettyprint::render(self.as_ref()))
+    }
+}
 impl<T, U> PartialEq<Parsed<U>> for Parsed<T>
 where
     T: PartialEq<U>,
 {
     fn eq(&self, other: &Parsed<U>) -> bool {
         self.outcome == other.outcome && self.span == other.span
+    }
+}
+impl<T> Outcome<T> {
+    pub fn valid_into_recovered(self) -> Self {
+        match self {
+            Outcome::Valid(x) | Outcome::Recovered(x) => Outcome::Recovered(x),
+            Outcome::Error(k) => Outcome::Error(k),
+        }
     }
 }
 impl<T, U> PartialEq<Outcome<U>> for Outcome<T>
