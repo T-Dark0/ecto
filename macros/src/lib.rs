@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_or_default)]
 
+use indexmap::IndexMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote, quote_spanned};
-use std::collections::HashMap;
 use syn::{
     Error, Expr, ExprPath, Ident, Pat,
     ext::IdentExt,
@@ -21,13 +21,15 @@ pub fn select(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 fn select2(input: TokenStream) -> Result<TokenStream, Error> {
     let select = syn::parse2::<Select>(input)?;
+    let parser_name = Ident::new("parser", select.parser.span());
     let parser = &select.parser;
     let tok_name = &select.tok;
     let expected_pat = &select.expected;
     let expected = dedup_expected(&select.arms);
-    let arms = expand_arms(parser, &select.arms);
+    let arms = expand_arms(&parser_name, &select.arms);
     Ok(quote! {{
-        let #tok_name = #parser.peek();
+        let &mut ref mut #parser_name = #parser;
+        let #tok_name = #parser_name.peek();
         let #expected_pat = &[#(#expected),*];
         match #tok_name.kind {
             #(#arms),*
@@ -35,13 +37,13 @@ fn select2(input: TokenStream) -> Result<TokenStream, Error> {
     }})
 }
 fn dedup_expected(arms: &Punctuated<Arm, Comma>) -> impl Iterator<Item = TokenStream> {
-    let mut seen = HashMap::new();
+    let mut seen = IndexMap::new();
     for arm in arms.iter().filter(|arm| arm.validity == Validity::Valid) {
         visit_expected(&arm.expected, &mut seen)
     }
     seen.into_values()
 }
-fn visit_expected(arm: &Expected, seen: &mut HashMap<String, TokenStream>) {
+fn visit_expected(arm: &Expected, seen: &mut IndexMap<String, TokenStream>) {
     match &arm.kind {
         ExpectedKind::Or(cases) => cases.iter().for_each(|case| visit_expected(case, seen)),
         ExpectedKind::Paren(expected) => visit_expected(expected, seen),
@@ -50,17 +52,17 @@ fn visit_expected(arm: &Expected, seen: &mut HashMap<String, TokenStream>) {
         ExpectedKind::Wild => (),
     }
 }
-fn insert<T: ToTokens>(node: T, seen: &mut HashMap<String, TokenStream>) {
+fn insert<T: ToTokens>(node: T, seen: &mut IndexMap<String, TokenStream>) {
     let stream = node.to_token_stream();
     seen.insert(stream.to_string(), stream);
 }
-fn expand_arms(parser: &Ident, arms: &Punctuated<Arm, Comma>) -> impl Iterator<Item = TokenStream> {
+fn expand_arms(parser_name: &Ident, arms: &Punctuated<Arm, Comma>) -> impl Iterator<Item = TokenStream> {
     arms.iter().map(move |arm| {
         let expected = &arm.expected;
         let guard = arm.guard.as_ref().map(|g| quote! { if #g }).unwrap_or(quote! {});
         let body = &arm.body;
         let mode_action = match arm.mode {
-            Mode::Next => quote! { #parser.next(); },
+            Mode::Next => quote! { #parser_name.next(); },
             Mode::Peek => quote! {},
         };
         quote! { #expected #guard => { #mode_action #body } }
@@ -68,7 +70,7 @@ fn expand_arms(parser: &Ident, arms: &Punctuated<Arm, Comma>) -> impl Iterator<I
 }
 
 struct Select {
-    parser: Ident,
+    parser: Expr,
     tok: Ident,
     expected: Pat,
     arms: Punctuated<Arm, Comma>,
@@ -102,7 +104,7 @@ enum Validity {
 }
 impl Parse for Select {
     fn parse(input: ParseStream) -> Result<Self, Error> {
-        let parser = Ident::parse_any(input)?;
+        let parser = Expr::parse(input)?;
         Comma::parse(input)?;
         Or::parse(input)?;
         let tok = Ident::parse(input)?;
@@ -141,9 +143,7 @@ impl Parse for Expected {
         fn limit_pat(pat: Pat) -> Result<Expected, Error> {
             let span = pat.span();
             let kind = match pat {
-                Pat::Or(pat) => ExpectedKind::Or(
-                    pat.cases.into_iter().map(limit_pat).collect::<Result<_, _>>()?,
-                ),
+                Pat::Or(pat) => ExpectedKind::Or(pat.cases.into_iter().map(limit_pat).collect::<Result<_, _>>()?),
                 Pat::Paren(pat) => ExpectedKind::Paren(Box::new(limit_pat(*pat.pat)?)),
                 Pat::Path(path) => ExpectedKind::Path(path),
                 Pat::Reference(pat) => ExpectedKind::Reference(Box::new(limit_pat(*pat.pat)?)),

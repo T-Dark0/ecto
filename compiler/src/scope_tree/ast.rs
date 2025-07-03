@@ -120,15 +120,6 @@ impl<T> Parsed<T> {
             Outcome::Error(k) => Parsed::error(self.span, k),
         }
     }
-    pub fn map_outcome<F, R>(self, f: F) -> Parsed<R>
-    where
-        F: FnOnce(Outcome<T>) -> Outcome<R>,
-    {
-        Parsed {
-            span: self.span,
-            outcome: f(self.outcome),
-        }
-    }
     pub fn as_ref(&self) -> Parsed<&T> {
         match &self.outcome {
             Outcome::Valid(v) => Parsed::valid(self.span, v),

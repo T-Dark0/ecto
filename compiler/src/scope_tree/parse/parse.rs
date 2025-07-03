@@ -329,14 +329,6 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
         debug(format_args!("peek: {tok:?}"));
         tok
     }
-    fn commit(&mut self) {
-        let committed = self.0.lexed.split_off(..self.0.peeked as usize);
-        debug(format_args!("commit: {committed:?}"));
-        if let Some([.., last]) = committed {
-            self.0.last_span = last.span
-        }
-        self.0.peeked = 0;
-    }
     fn raw_next(lexed: &mut &[Token]) -> (Option<Token>, u32) {
         let initial_len = lexed.len();
         let out = loop {
@@ -394,14 +386,12 @@ pub enum ErrorKind {
     DuplicateOpDef,
     MissingStarInVariadics,
     RepetitionOfNothing,
-    MissingBindingDecl,
     MissingArrow,
     UnclosedScope,
 }
 impl Error {
     fn new(span: Span, kind: ErrorKind) -> Self {
-        let err = Self { kind, span };
-        err
+        Self { kind, span }
     }
 }
 

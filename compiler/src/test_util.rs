@@ -15,11 +15,10 @@ pub fn literal(text: &str) -> String {
             .min()?;
         let first_nonempty = lines.iter().position(|line| !line.trim().is_empty())?;
         let last_nonempty = lines.iter().rposition(|line| !line.trim().is_empty())?;
-        let mut lines =
-            lines[first_nonempty..=last_nonempty].iter().map(|line| match line.trim() {
-                "" => line.get(min_indent..).unwrap_or(""),
-                _ => &line[min_indent..],
-            });
+        let mut lines = lines[first_nonempty..=last_nonempty].iter().map(|line| match line.trim() {
+            "" => line.get(min_indent..).unwrap_or(""),
+            _ => &line[min_indent..],
+        });
         let mut out = String::new();
         if let Some(first) = lines.next() {
             out.push_str(first);

@@ -1,6 +1,6 @@
 mod common;
 mod formatting_node;
-mod parse;
+pub mod parse;
 mod render;
 mod test;
 

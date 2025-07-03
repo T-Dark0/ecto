@@ -351,13 +351,6 @@ impl<'stream, 'source> Node<'stream, 'source> {
         }
         Ok(Parsed::error(self.location().0, kind))
     }
-
-    fn reborrow<'a>(&'a mut self) -> Node<'a, 'source> {
-        Node {
-            meta: self.meta,
-            contents: self.contents.as_deref_mut(),
-        }
-    }
 }
 
 struct Lexer<'source> {
@@ -471,12 +464,13 @@ enum TokenKind {
     Eof,
 }
 #[derive(Debug, Clone, Copy)]
+#[expect(dead_code, reason = "Only used in the debug impl or in tests")]
 pub struct Error {
-    pub kind: ErrorKind,
+    kind: ErrorKind,
     pub span: Span,
 }
 #[derive(Debug, Clone, Copy)]
-pub enum ErrorKind {
+enum ErrorKind {
     LexError,
     UnexpectedEof,
     ExpectedNodeKind,
@@ -484,6 +478,7 @@ pub enum ErrorKind {
     ExpectedNumber,
     ExpectedComma,
     ExpectedCloseSquareParen,
+    #[expect(dead_code, reason = "Only used in the debug impl")]
     UnexpectedNode(NodeMetadata),
     UnclosedNode,
     DuplicateOpDef,

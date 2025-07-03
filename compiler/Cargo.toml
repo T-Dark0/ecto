@@ -11,6 +11,8 @@ strum = { version = "0.26.3", features = ["derive"] }
 itertools = "0.14.0"
 typed-arena = "2.0.2"
 bytemuck = { version = "1.23.1", features = ["derive"] }
+macro_rules_attribute = "0.2.2"
 
 [dev-dependencies]
+macro_rules_attribute = "0.2.2"
 pretty_assertions = "1.4.1"

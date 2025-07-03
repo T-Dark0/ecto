@@ -16,9 +16,6 @@ impl Span {
     pub fn new(start: u32, len: u16) -> Self {
         Self { start, len }
     }
-    pub fn new_empty(start: u32) -> Self {
-        Self { start, len: 0 }
-    }
     pub fn from_usize_range(range: Range<usize>) -> Self {
         Self {
             start: range.start as u32,
@@ -30,14 +27,6 @@ impl Span {
         Self {
             start: self.start,
             len: (end - self.start) as u16,
-        }
-    }
-    pub fn between(self, rhs: Self) -> Self {
-        let after_lhs = self.start + u32::from(self.len);
-        let before_rhs = rhs.start;
-        Self {
-            start: after_lhs,
-            len: (before_rhs - after_lhs) as u16,
         }
     }
     pub fn empty_after(self) -> Self {
@@ -52,6 +41,7 @@ impl Span {
             len: 0,
         }
     }
+    #[cfg_attr(not(test), expect(dead_code, reason = "only used in tests"))]
     pub fn to_usize_range(self) -> Range<usize> {
         self.start as usize..(self.start + u32::from(self.len)) as usize
     }

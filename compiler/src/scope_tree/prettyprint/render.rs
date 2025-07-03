@@ -134,13 +134,6 @@ impl<'out> RenderState<'out, Outline, Outline> {
         let Ok(state) = self.cast::<Outline, Generic>().push(text);
         state.cast()
     }
-    fn reserve(self, width: usize) -> Self {
-        let Ok(state) = self.cast::<Outline, Generic>().reserve(width);
-        state.cast()
-    }
-    fn push_reserved(self, text: &str) -> Self {
-        self.cast::<Outline, Generic>().push_reserved(text).cast()
-    }
     fn nest(self) -> Self {
         self.cast::<Outline, Generic>().nest().cast()
     }
