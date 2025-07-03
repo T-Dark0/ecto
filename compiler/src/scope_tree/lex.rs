@@ -7,7 +7,7 @@ use std::{
 use strum::EnumCount;
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
-#[logos(skip "[ \t]+")]
+#[logos(skip "[ \r\t]+")]
 pub enum TokenKind {
     #[token("fn")]
     Fn,
