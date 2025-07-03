@@ -99,6 +99,10 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
         let ident = self.next();
         match ident.kind {
             TokenKind::Ident => Parsed::valid(ident.span, Ident),
+            _ if resembles_ident(ident.kind) => {
+                self.unexpected(&[TokenKind::Ident], ident);
+                Parsed::recovered(ident.span, Ident)
+            }
             _ => {
                 self.unexpected(&[TokenKind::Ident], ident);
                 Parsed::error(ident.span, NodeKind::Ident)
@@ -375,24 +379,11 @@ impl<'source, M> Parser<'source, M> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Error {
-    pub kind: ErrorKind,
-    pub span: Span,
-}
-#[derive(Debug, PartialEq, Eq)]
-pub enum ErrorKind {
-    UnexpectedToken { expected: Vec<TokenKind>, got: TokenKind },
-    DuplicateOpDef,
-    MissingStarInVariadics,
-    RepetitionOfNothing,
-    MissingArrow,
-    UnclosedScope,
-}
-impl Error {
-    fn new(span: Span, kind: ErrorKind) -> Self {
-        Self { kind, span }
-    }
+fn resembles_ident(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Fn | TokenKind::Op | TokenKind::Ident | TokenKind::Underscore | TokenKind::Use
+    )
 }
 
 trait TokenHandler {
@@ -446,6 +437,26 @@ macro_rules! token {
     };
 }
 use token;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Error {
+    pub kind: ErrorKind,
+    pub span: Span,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub enum ErrorKind {
+    UnexpectedToken { expected: Vec<TokenKind>, got: TokenKind },
+    DuplicateOpDef,
+    MissingStarInVariadics,
+    RepetitionOfNothing,
+    MissingArrow,
+    UnclosedScope,
+}
+impl Error {
+    fn new(span: Span, kind: ErrorKind) -> Self {
+        Self { kind, span }
+    }
+}
 
 macro_rules! trace {
     (

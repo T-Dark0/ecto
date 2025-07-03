@@ -256,7 +256,7 @@ fn nested_function_named_op() {
                 FnBody[30, 64](
                     Ident[32, 3]
                     Scope[39, 55](FnDef[39, 55](
-                        Ident![50, 2]
+                        Ident*[50, 2]
                         FnBody[80, 8](Ident[82, 1] Scope[87, 1]())
                     ))
                 )
