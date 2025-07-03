@@ -299,7 +299,6 @@ impl ToFormattingNode for OpParts {
         ctx: NodeContext,
         arena: &mut FormattingArena<'arena>,
     ) -> FormattingNode<'arena> {
-        println!("OpParts::to_formatting_node");
         FormattingNode {
             text: arena.name_and_context("OpParts", ctx),
             children: arena.children(&self.0),
