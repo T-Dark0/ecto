@@ -1,5 +1,4 @@
 #![allow(clippy::module_inception, clippy::unwrap_or_default)]
-
 use std::{
     env,
     fmt::{self, Display},
@@ -10,7 +9,7 @@ mod scope_tree;
 mod test_util;
 
 fn main() {
-    let result = parse_args(&mut env::args());
+    let result = parse_args(&mut env::args().skip(1));
     match result {
         Ok(()) => (),
         Err(e) => eprintln!("{e}"),
@@ -29,7 +28,7 @@ fn prettyprint<I: Iterator<Item = String>>(args: &mut I) -> Result<(), Error> {
     let file = args.next().ok_or(Error::InsufficientArguments)?;
     let source = fs::read_to_string(&file).map_err(Error::Io)?;
     let (parsed, errors) = scope_tree::parse(&source);
-    println!("{parsed:?}\n{errors:#?}");
+    println!("PRETTY:{parsed:?}\n{errors:#?}");
     Ok(())
 }
 fn parse_scope_tree<I: Iterator<Item = String>>(args: &mut I) -> Result<(), Error> {
