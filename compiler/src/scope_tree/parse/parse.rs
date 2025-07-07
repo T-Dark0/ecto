@@ -19,7 +19,6 @@ pub fn parse(source: &str) -> (Parsed<Scope>, Vec<Error>) {
         lexed: &tokens,
         errors: Vec::new(),
         last_span: Span::new(0, 0),
-        peeked: 0,
     });
     let out = parser.parse_open_scope();
     (out, parser.0.errors)
@@ -34,7 +33,6 @@ struct ParserCore<'source> {
     lexed: &'source [Token],
     errors: Vec<Error>,
     last_span: Span,
-    peeked: u32,
 }
 impl<'source, H: TokenHandler> Parser<'source, H> {
     #[macro_rules_attribute(trace)]
@@ -74,6 +72,7 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
             uses,
             fn_defs,
             children,
+            tokentrees: Vec::new(), // FIXME actually parse these
         })
     }
     #[macro_rules_attribute(trace)]
@@ -317,7 +316,7 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
         self.0.last_span
     }
     fn next(&mut self) -> Token {
-        let (tok, _) = Self::raw_next(&mut self.0.lexed);
+        let tok = Self::raw_next(&mut self.0.lexed);
         let tok = match tok {
             Some(tok) => {
                 self.0.last_span = tok.span;
@@ -330,15 +329,13 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
         tok
     }
     fn peek(&mut self) -> Token {
-        let (tok, peeked) = Self::raw_next(&mut { self.0.lexed });
-        self.0.peeked = peeked;
+        let tok = Self::raw_next(&mut { self.0.lexed });
         let tok = tok.unwrap_or_else(|| self.eof());
         debug(format_args!("peek: {tok:?}"));
         tok
     }
-    fn raw_next(lexed: &mut &[Token]) -> (Option<Token>, u32) {
-        let initial_len = lexed.len();
-        let out = loop {
+    fn raw_next(lexed: &mut &[Token]) -> Option<Token> {
+        loop {
             let handling = H::handle(lexed);
             debug(format_args!(
                 "raw_next: handling: {handling:?}, lexed: {:?}, ..",
@@ -349,8 +346,7 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
                 TokenHandling::Skip => _ = lexed.split_off_first(),
                 TokenHandling::Stop => break None,
             }
-        };
-        (out, (initial_len - lexed.len()) as u32)
+        }
     }
     fn unexpected(&mut self, expected: &[TokenKind], got: Token) {
         self.error(Error::new(

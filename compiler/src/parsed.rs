@@ -3,12 +3,12 @@ use std::{
     ops::Range,
 };
 
-#[derive(Eq, Clone, Copy)]
+#[derive(Debug, Eq, Clone, Copy)]
 pub struct Parsed<T, E> {
     pub span: Span,
     pub outcome: Outcome<T, E>,
 }
-#[derive(Eq, Clone, Copy)]
+#[derive(Debug, Eq, Clone, Copy)]
 pub enum Outcome<T, E> {
     Valid(T),
     Recovered(T),
@@ -20,10 +20,6 @@ pub enum Validity {
     Recovered,
     Error,
 }
-/// Represents a span in cursor units. For example, `Span { start: 3, len: 5 }` on the string `abcdefghij` would refer to the portion
-/// `defgh`: the `3` refers to the third space between letters, the third position a typing cursor may be placed at.
-///
-/// Incidentally, this implies that the first byte of a span with `start = n` is the `n`th byte of the input.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub start: u32,
@@ -67,6 +63,10 @@ impl<T, E> Parsed<T, E> {
             Outcome::Recovered(e) => Parsed::recovered(self.span, e),
             Outcome::Error(k) => Parsed::error(self.span, k.clone()),
         }
+    }
+    #[cfg_attr(not(test), expect(dead_code, reason = "only used in tests"))]
+    pub fn render(&self) -> Render<'_, T, E> {
+        Render(self)
     }
 }
 impl<T1, T2, E1, E2> PartialEq<Parsed<T2, E2>> for Parsed<T1, E1>
@@ -137,5 +137,18 @@ impl Span {
 impl Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}, {}]", self.start, self.len)
+    }
+}
+
+pub trait RenderParsed<E>: Sized {
+    fn fmt(this: &Parsed<Self, E>, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+}
+pub struct Render<'a, T, E>(&'a Parsed<T, E>);
+impl<'a, T, E> Debug for Render<'a, T, E>
+where
+    T: RenderParsed<E>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        RenderParsed::fmt(self.0, f)
     }
 }

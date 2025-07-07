@@ -295,7 +295,7 @@ fn test_errors(ast: &str, syntax: &str, expected_errors: &[Error]) {
         panic!(
             "{}\n{}",
             Comparison::new(expected_errors, &errors),
-            Comparison::new(&expected, &got)
+            Comparison::new(&expected.render(), &got.render())
         );
     }
 }

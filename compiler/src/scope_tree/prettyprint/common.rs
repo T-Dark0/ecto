@@ -2,8 +2,12 @@ use super::{
     formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode},
     render,
 };
-use crate::scope_tree::ast::{
-    FnBody, FnDef, Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope, UseStmt,
+use crate::{
+    parsed::RenderParsed,
+    scope_tree::ast::{
+        FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
+        UseStmt,
+    },
 };
 use std::fmt::{self, Debug};
 
@@ -30,12 +34,12 @@ macro_rules! impl_traits {
                 }
             }
         }
-        impl Debug for Parsed<AnyNode> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let string = match &self.outcome {
-                    $( Outcome::Valid(AnyNode::$node(node)) => render(Parsed::valid(self.span, node)), )*
-                    $( Outcome::Recovered(AnyNode::$node(node)) => render(Parsed::recovered(self.span, node)), )*
-                    Outcome::Error(kind) => render(Parsed::<AnyNode>::error(self.span, *kind)),
+        impl RenderParsed<NodeKind> for AnyNode {
+            fn fmt(this: &Parsed<Self>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let string = match &this.outcome {
+                    $( Outcome::Valid(AnyNode::$node(node)) => render(Parsed::valid(this.span, node)), )*
+                    $( Outcome::Recovered(AnyNode::$node(node)) => render(Parsed::recovered(this.span, node)), )*
+                    Outcome::Error(kind) => render(Parsed::<AnyNode>::error(this.span, *kind)),
                 };
                 f.write_str(&string)
             }

@@ -1,11 +1,19 @@
-use crate::{parsed, scope_tree::prettyprint};
+use super::lex::Token;
+use crate::{
+    parsed::{self, RenderParsed},
+    scope_tree::prettyprint,
+};
 use std::fmt::{self, Debug};
+
+// If `Scope`s drop the SoA representation, they basically _are_ `TokenTree::Group`s
+// We can add an `Item` variant to the tokentree enum, then an `Atom` variant to represent an individual token, and that's it, we're done.
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Scope {
     pub uses: Vec<Parsed<UseStmt>>,
     pub fn_defs: Vec<Parsed<FnDef>>,
     pub children: Vec<Parsed<Scope>>,
+    pub tokentrees: Vec<TokenTree>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct UseStmt {
@@ -51,6 +59,17 @@ pub struct FnBody {
     pub args: Vec<Parsed<Ident>>,
     pub body: Parsed<Scope>,
 }
+#[derive(Debug, PartialEq, Eq)]
+pub enum TokenTree {
+    Atom(Token),
+    Item(ItemKind),
+    Group(Vec<Parsed<TokenTree>>),
+}
+#[derive(Debug, PartialEq, Eq)]
+pub enum ItemKind {
+    UseStmt,
+    FnDef,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NodeKind {
@@ -76,15 +95,15 @@ pub enum NodeKind {
 pub type Parsed<T> = parsed::Parsed<T, NodeKind>;
 pub type Outcome<T> = parsed::Outcome<T, NodeKind>;
 
-macro_rules! impl_debug {
+macro_rules! impl_parsed_debug {
     ($($ty:ty)*) => {
         $(
-            impl Debug for Parsed<$ty> {
-                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str(&prettyprint::render(self.as_ref_node()))
+            impl RenderParsed<NodeKind> for $ty {
+                fn fmt(this: &Parsed<Self>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str(&prettyprint::render(this.as_ref_node()))
                 }
             }
         )*
     };
 }
-impl_debug! { Scope UseStmt FnDef Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow FnBody }
+impl_parsed_debug! { Scope UseStmt FnDef Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow FnBody }

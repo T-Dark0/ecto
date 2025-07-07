@@ -1,13 +1,14 @@
 #![allow(clippy::module_inception, clippy::unwrap_or_default)]
+
+mod parsed;
+mod scope_tree;
+mod test_util;
+
 use std::{
     env,
     fmt::{self, Display},
     fs, io,
 };
-
-mod parsed;
-mod scope_tree;
-mod test_util;
 
 fn main() {
     let result = parse_args(&mut env::args().skip(1));

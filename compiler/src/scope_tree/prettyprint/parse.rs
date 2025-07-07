@@ -81,6 +81,7 @@ impl<'source> NodeStream<'source> {
             uses,
             fn_defs,
             children,
+            tokentrees: Vec::new(),
         })
     }
     #[macro_rules_attribute(trace)]
