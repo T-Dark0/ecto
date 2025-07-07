@@ -1,5 +1,5 @@
 use super::prettyprint::ToFormattingNode;
-use crate::scope_tree::{prettyprint, span::Span};
+use crate::{scope_tree::prettyprint, span::Span};
 use std::fmt::{self, Debug};
 
 #[derive(Debug, PartialEq, Eq)]

@@ -1,15 +1,18 @@
-use crate::scope_tree::{
-    ast::{
-        FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        UseStmt,
+use crate::{
+    scope_tree::{
+        ast::{
+            FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed,
+            Scope, UseStmt,
+        },
+        lex::{Lexer, Token, TokenKind},
     },
-    lex::{Lexer, Token, TokenKind},
     span::Span,
 };
 use bytemuck::TransparentWrapper;
 use ecto_macros::select;
 use macro_rules_attribute::macro_rules_attribute;
 use std::{any::type_name, cell::Cell, marker::PhantomData};
+
 pub fn parse(source: &str) -> (Parsed<Scope>, Vec<Error>) {
     let tokens = Lexer::new(source).collect::<Vec<_>>();
     let mut parser = Parser::<SkipNewlines>::new(ParserCore {
@@ -22,17 +25,17 @@ pub fn parse(source: &str) -> (Parsed<Scope>, Vec<Error>) {
     (out, parser.0.errors)
 }
 
+type Parser<'source, H> = Parser_<ParserCore<'source>, H>;
+#[derive(TransparentWrapper)]
+#[transparent(Core)]
+#[repr(transparent)]
+struct Parser_<Core, H>(Core, PhantomData<H>);
 struct ParserCore<'source> {
     lexed: &'source [Token],
     errors: Vec<Error>,
     last_span: Span,
     peeked: u32,
 }
-#[derive(TransparentWrapper)]
-#[transparent(Core)]
-#[repr(transparent)]
-struct Parser_<Core, H>(Core, PhantomData<H>);
-type Parser<'source, H> = Parser_<ParserCore<'source>, H>;
 impl<'source, H: TokenHandler> Parser<'source, H> {
     #[macro_rules_attribute(trace)]
     fn parse_delimited_scope(&mut self) -> Parsed<Scope> {

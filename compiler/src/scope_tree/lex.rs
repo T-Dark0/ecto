@@ -1,4 +1,4 @@
-use super::span::Span;
+use crate::span::Span;
 use logos::Logos;
 use std::{
     fmt::{self, Debug},
@@ -7,7 +7,7 @@ use std::{
 use strum::EnumCount;
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
-#[logos(skip "[ \r\t]+")]
+#[logos(skip "[\\p{White_Space}--\n]")]
 pub enum TokenKind {
     #[token("fn")]
     Fn,
@@ -25,7 +25,7 @@ pub enum TokenKind {
     Ident,
     #[token("_")]
     Underscore,
-    #[regex(r#""[^"]+""#)]
+    #[regex(r#""[^"]*""#)]
     Literal,
     #[token(r"\_")]
     BackslashUnderscore,
@@ -47,6 +47,8 @@ pub enum TokenKind {
     OpenParen,
     #[token(")")]
     CloseParen,
+    #[token(r"[^\p{White_Space}]+")]
+    Operator,
 
     Eof,
     Error,

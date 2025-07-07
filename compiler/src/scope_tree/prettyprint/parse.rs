@@ -1,6 +1,6 @@
 use super::common::AnyNode;
-use crate::scope_tree::{
-    ast::{
+use crate::{
+    scope_tree::ast::{
         FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope, UseStmt,
         Validity,
     },

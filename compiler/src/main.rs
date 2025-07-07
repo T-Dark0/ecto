@@ -6,6 +6,7 @@ use std::{
 };
 
 mod scope_tree;
+mod span;
 mod test_util;
 
 fn main() {
