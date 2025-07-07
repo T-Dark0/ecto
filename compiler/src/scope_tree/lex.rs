@@ -1,4 +1,4 @@
-use crate::span::Span;
+use crate::parsed::Span;
 use logos::Logos;
 use std::{
     fmt::{self, Debug},

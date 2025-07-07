@@ -1,10 +1,9 @@
 use super::common::AnyNode;
 use crate::{
+    parsed::{Span, Validity},
     scope_tree::ast::{
         FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Parsed, Scope, UseStmt,
-        Validity,
     },
-    span::Span,
 };
 use logos::Logos;
 use macro_rules_attribute::macro_rules_attribute;

@@ -5,8 +5,8 @@ use std::{
     fs, io,
 };
 
+mod parsed;
 mod scope_tree;
-mod span;
 mod test_util;
 
 fn main() {

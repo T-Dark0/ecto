@@ -1,6 +1,9 @@
-use super::formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode};
+use super::{
+    formatting_node::{FormattingArena, FormattingNode, NodeContext, ToFormattingNode},
+    render,
+};
 use crate::scope_tree::ast::{
-    FnBody, FnDef, Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Scope, UseStmt,
+    FnBody, FnDef, Ident, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope, UseStmt,
 };
 use std::fmt::{self, Debug};
 
@@ -27,6 +30,16 @@ macro_rules! impl_traits {
                 }
             }
         }
+        impl Debug for Parsed<AnyNode> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let string = match &self.outcome {
+                    $( Outcome::Valid(AnyNode::$node(node)) => render(Parsed::valid(self.span, node)), )*
+                    $( Outcome::Recovered(AnyNode::$node(node)) => render(Parsed::recovered(self.span, node)), )*
+                    Outcome::Error(kind) => render(Parsed::<AnyNode>::error(self.span, *kind)),
+                };
+                f.write_str(&string)
+            }
+        }
         $(
             impl PartialEq<$node> for AnyNode {
                 fn eq(&self, other: &$node) -> bool {
@@ -49,4 +62,4 @@ macro_rules! impl_traits {
 
     };
 }
-impl_traits! {Scope UseStmt FnDef FnBody Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow }
+impl_traits! { Scope UseStmt FnDef FnBody Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow }

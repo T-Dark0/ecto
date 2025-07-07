@@ -1,4 +1,5 @@
 use crate::{
+    parsed::Span,
     scope_tree::{
         ast::{
             FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed,
@@ -6,7 +7,6 @@ use crate::{
         },
         lex::{Lexer, Token, TokenKind},
     },
-    span::Span,
 };
 use bytemuck::TransparentWrapper;
 use ecto_macros::select;

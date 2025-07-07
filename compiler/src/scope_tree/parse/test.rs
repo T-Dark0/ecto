@@ -2,8 +2,8 @@
 
 use super::parse::{Error, ErrorKind};
 use crate::{
+    parsed::Span,
     scope_tree::{lex::TokenKind, prettyprint},
-    span::Span,
     test_util::literal,
 };
 use pretty_assertions::Comparison;

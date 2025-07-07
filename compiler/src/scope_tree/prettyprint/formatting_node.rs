@@ -1,9 +1,9 @@
 use crate::{
+    parsed::{Span, Validity},
     scope_tree::ast::{
         FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        UseStmt, Validity,
+        UseStmt,
     },
-    span::Span,
 };
 use std::fmt::Write;
 use typed_arena::Arena;
@@ -152,7 +152,7 @@ impl<'of, 'arena> ChildBuilder<'of, 'arena> {
     where
         C: ToFormattingNode,
     {
-        let child = to_formatting_node(child.as_ref(), self.arena);
+        let child = to_formatting_node(child.as_ref_node(), self.arena);
         self.arena.children_scratch_buffer.push(child);
         self
     }
@@ -206,7 +206,7 @@ impl ToFormattingNode for UseStmt {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("UseStmt", ctx),
-            children: arena.children_builder().children(&self.path).finish(),
+            children: arena.children(&self.path),
         }
     }
 }
@@ -218,14 +218,7 @@ impl ToFormattingNode for FnDef {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("FnDef", ctx),
-            children: {
-                let mut builder = arena.children_builder();
-                builder.child(&self.name);
-                if let Some(op_def) = &self.op_def {
-                    builder.child(op_def);
-                }
-                builder.children(&self.bodies).finish()
-            },
+            children: arena.children_builder().child(&self.name).children(&self.op_def).children(&self.bodies).finish(),
         }
     }
 }
