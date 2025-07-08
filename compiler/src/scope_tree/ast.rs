@@ -5,15 +5,18 @@ use crate::{
 };
 use std::fmt::{self, Debug};
 
-// If `Scope`s drop the SoA representation, they basically _are_ `TokenTree::Group`s
-// We can add an `Item` variant to the tokentree enum, then an `Atom` variant to represent an individual token, and that's it, we're done.
-
 #[derive(Debug, PartialEq, Eq)]
-pub struct Scope {
-    pub uses: Vec<Parsed<UseStmt>>,
-    pub fn_defs: Vec<Parsed<FnDef>>,
-    pub children: Vec<Parsed<Scope>>,
-    pub tokentrees: Vec<TokenTree>,
+pub struct Scope(pub Vec<ScopeElement>);
+#[derive(Debug, PartialEq, Eq)]
+pub enum ScopeElement {
+    Atom(Token),
+    Item(Parsed<Item>),
+    Child(Parsed<Scope>),
+}
+#[derive(Debug, PartialEq, Eq)]
+pub enum Item {
+    UseStmt(UseStmt),
+    FnDef(FnDef),
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct UseStmt {
@@ -59,43 +62,19 @@ pub struct FnBody {
     pub args: Vec<Parsed<Ident>>,
     pub body: Parsed<Scope>,
 }
-#[derive(Debug, PartialEq, Eq)]
-pub enum TokenTree {
-    Atom(Token),
-    Item(ItemKind),
-    Group(Vec<Parsed<TokenTree>>),
-}
-#[derive(Debug, PartialEq, Eq)]
-pub enum ItemKind {
-    UseStmt,
-    FnDef,
-}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+/// Variants will be added to this enum as more become needed
 pub enum NodeKind {
-    Scope,
-    UseStmt,
-    FnDef,
     Ident,
-    OpDef,
     OpParts,
-    OpPart,
-    Argument,
-    LazyArgument,
-    Literal,
-    Variadic,
-    OpBindings,
-    OpBinding,
     OpArrow,
-    OpArrowLeft,
-    OpArrowRight,
-    FnBody,
 }
 
 pub type Parsed<T> = parsed::Parsed<T, NodeKind>;
 pub type Outcome<T> = parsed::Outcome<T, NodeKind>;
 
-macro_rules! impl_parsed_debug {
+macro_rules! impl_render_parsed {
     ($($ty:ty)*) => {
         $(
             impl RenderParsed<NodeKind> for $ty {
@@ -106,4 +85,4 @@ macro_rules! impl_parsed_debug {
         )*
     };
 }
-impl_parsed_debug! { Scope UseStmt FnDef Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow FnBody }
+impl_render_parsed! { Scope UseStmt FnDef Ident OpDef OpParts OpPart OpBindings OpBinding OpArrow FnBody }

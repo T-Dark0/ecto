@@ -47,11 +47,9 @@ pub enum TokenKind {
     OpenParen,
     #[token(")")]
     CloseParen,
-    #[token(r"[^\p{White_Space}]+")]
-    Operator,
 
+    Unknown,
     Eof,
-    Error,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -84,7 +82,7 @@ impl<'source> Lexer<'source> {
     fn raw_next(&mut self) -> Option<Token> {
         let (kind, span) = match self.raw.next() {
             Some(Ok(kind)) => (kind, to_span(self.raw.span())),
-            Some(Err(())) => (TokenKind::Error, to_span(self.raw.span())),
+            Some(Err(())) => (TokenKind::Unknown, to_span(self.raw.span())),
             None => return None,
         };
         Some(Token { kind, span })
@@ -98,7 +96,7 @@ impl<'source> Iterator for Lexer<'source> {
                 LexerState::Normal => {
                     let tok = self.raw_next()?;
                     match tok.kind {
-                        TokenKind::Error => {
+                        TokenKind::Unknown => {
                             self.state = LexerState::Error(tok.span);
                             continue;
                         }
@@ -108,11 +106,11 @@ impl<'source> Iterator for Lexer<'source> {
                 LexerState::Error(span) => {
                     let tok = self.raw_next()?;
                     match tok.kind {
-                        TokenKind::Error => self.state = LexerState::Error(span.around(tok.span)),
+                        TokenKind::Unknown => self.state = LexerState::Error(span.around(tok.span)),
                         _ => {
                             self.state = LexerState::PostError(tok);
                             break Some(Token {
-                                kind: TokenKind::Error,
+                                kind: TokenKind::Unknown,
                                 span,
                             });
                         }

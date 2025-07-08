@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     ops::Range,
 };
 
@@ -144,7 +144,7 @@ pub trait RenderParsed<E>: Sized {
     fn fmt(this: &Parsed<Self, E>, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 }
 pub struct Render<'a, T, E>(&'a Parsed<T, E>);
-impl<'a, T, E> Debug for Render<'a, T, E>
+impl<'a, T, E> Display for Render<'a, T, E>
 where
     T: RenderParsed<E>,
 {

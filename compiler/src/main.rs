@@ -21,7 +21,6 @@ fn main() {
 fn parse_args<I: Iterator<Item = String>>(args: &mut I) -> Result<(), Error> {
     match args.next().ok_or(Error::InsufficientArguments)?.as_str() {
         "--prettyprint" => prettyprint(args)?,
-        "--parse-scope-tree" => parse_scope_tree(args)?,
         _ => return Err(Error::UnknownArgument),
     };
     Ok(())
@@ -31,13 +30,6 @@ fn prettyprint<I: Iterator<Item = String>>(args: &mut I) -> Result<(), Error> {
     let source = fs::read_to_string(&file).map_err(Error::Io)?;
     let (parsed, errors) = scope_tree::parse(&source);
     println!("{parsed:?}\n{errors:#?}");
-    Ok(())
-}
-fn parse_scope_tree<I: Iterator<Item = String>>(args: &mut I) -> Result<(), Error> {
-    let file = args.next().ok_or(Error::InsufficientArguments)?;
-    let source = fs::read_to_string(&file).map_err(Error::Io)?;
-    let parsed = scope_tree::prettyprint::parse(&source);
-    println!("{parsed:?}");
     Ok(())
 }
 

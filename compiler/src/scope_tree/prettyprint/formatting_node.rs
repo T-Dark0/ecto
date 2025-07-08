@@ -1,8 +1,11 @@
 use crate::{
     parsed::{Span, Validity},
-    scope_tree::ast::{
-        FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed, Scope,
-        UseStmt,
+    scope_tree::{
+        ast::{
+            FnBody, FnDef, Ident, Item, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome,
+            Parsed, Scope, ScopeElement, UseStmt,
+        },
+        lex::{Token, TokenKind},
     },
 };
 use std::fmt::Write;
@@ -24,23 +27,9 @@ fn node_kind_to_formatting_node<'arena>(
     arena: &mut FormattingArena<'arena>,
 ) -> FormattingNode<'arena> {
     let name = match kind {
-        NodeKind::Scope => "Scope!",
-        NodeKind::UseStmt => "UseStmt!",
-        NodeKind::FnDef => "FnDef!",
         NodeKind::Ident => "Ident!",
-        NodeKind::OpDef => "OpDef!",
-        NodeKind::OpPart => "OpPart!",
-        NodeKind::Argument => "Argument!",
-        NodeKind::LazyArgument => "LazyArgument!",
-        NodeKind::Literal => "Literal!",
-        NodeKind::Variadic => "Variadic!",
         NodeKind::OpParts => "OpParts!",
-        NodeKind::OpBindings => "OpBindings!",
-        NodeKind::OpBinding => "OpBinding!",
         NodeKind::OpArrow => "OpArrow!",
-        NodeKind::OpArrowLeft => "OpArrowLeft!",
-        NodeKind::OpArrowRight => "OpArrowRight!",
-        NodeKind::FnBody => "FnBody!",
     };
     FormattingNode {
         text: arena.name_and_span(name, span),
@@ -133,16 +122,16 @@ impl<'arena> FormattingArena<'arena> {
     where
         C: ToFormattingNode,
     {
-        self.children_builder().child(child).finish()
+        self.child_builder().child(child).finish()
     }
     pub fn children<'a, C, N>(&mut self, children: C) -> Children<'arena>
     where
         C: IntoIterator<Item = &'a Parsed<N>>,
         N: ToFormattingNode + 'a,
     {
-        self.children_builder().children(children).finish()
+        self.child_builder().children(children).finish()
     }
-    pub fn children_builder(&mut self) -> ChildBuilder<'_, 'arena> {
+    pub fn child_builder(&mut self) -> ChildBuilder<'_, 'arena> {
         self.children_stack_frame_sizes.push(self.children_scratch_buffer.len());
         ChildBuilder { arena: self }
     }
@@ -152,7 +141,13 @@ impl<'of, 'arena> ChildBuilder<'of, 'arena> {
     where
         C: ToFormattingNode,
     {
-        let child = to_formatting_node(child.as_ref_node(), self.arena);
+        self.child_with(|arena| to_formatting_node(child.as_ref_node(), arena))
+    }
+    pub fn child_with<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnOnce(&mut FormattingArena<'arena>) -> FormattingNode<'arena>,
+    {
+        let child = f(&mut self.arena);
         self.arena.children_scratch_buffer.push(child);
         self
     }
@@ -189,12 +184,58 @@ impl ToFormattingNode for Scope {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("Scope", ctx),
-            children: arena
-                .children_builder()
-                .children(&self.uses)
-                .children(&self.fn_defs)
-                .children(&self.children)
-                .finish(),
+            children: {
+                let mut builder = arena.child_builder();
+                for elem in &self.0 {
+                    match elem {
+                        ScopeElement::Atom(token) => builder.child_with(|arena| add_token(*token, arena)),
+                        ScopeElement::Item(parsed) => builder.child(parsed),
+                        ScopeElement::Child(parsed) => builder.child(parsed),
+                    };
+                }
+                builder.finish()
+            },
+        }
+    }
+}
+fn add_token<'arena>(token: Token, arena: &mut FormattingArena<'arena>) -> FormattingNode<'arena> {
+    let name = match token.kind {
+        TokenKind::Fn => "@Fn",
+        TokenKind::Newline => "@Newline",
+        TokenKind::Op => "@Op",
+        TokenKind::Colon => "@Colon",
+        TokenKind::Equals => "@Equals",
+        TokenKind::FatArrow => "@FatArrow",
+        TokenKind::Ident => "@Ident",
+        TokenKind::Underscore => "@Underscore",
+        TokenKind::Literal => "@Literal",
+        TokenKind::BackslashUnderscore => "@BackslashUnderscore",
+        TokenKind::Star => "@Star",
+        TokenKind::Semicolon => "@Semicolon",
+        TokenKind::LeftArrow => "@LeftArrow",
+        TokenKind::RightArrow => "@RightArrow",
+        TokenKind::Comma => "@Comma",
+        TokenKind::Use => "@Use",
+        TokenKind::Dot => "@Dot",
+        TokenKind::OpenParen => "@OpenParen",
+        TokenKind::CloseParen => "@CloseParen",
+        TokenKind::Eof => "@Eof",
+        TokenKind::Unknown => "@Unknown",
+    };
+    FormattingNode {
+        text: arena.name_and_span(name, token.span),
+        children: Children::Never,
+    }
+}
+impl ToFormattingNode for Item {
+    fn to_formatting_node<'arena>(
+        &self,
+        ctx: NodeContext,
+        arena: &mut FormattingArena<'arena>,
+    ) -> FormattingNode<'arena> {
+        match self {
+            Item::UseStmt(use_stmt) => use_stmt.to_formatting_node(ctx, arena),
+            Item::FnDef(fn_def) => fn_def.to_formatting_node(ctx, arena),
         }
     }
 }
@@ -218,7 +259,7 @@ impl ToFormattingNode for FnDef {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("FnDef", ctx),
-            children: arena.children_builder().child(&self.name).children(&self.op_def).children(&self.bodies).finish(),
+            children: arena.child_builder().child(&self.name).children(&self.op_def).children(&self.bodies).finish(),
         }
     }
 }
@@ -230,7 +271,7 @@ impl ToFormattingNode for FnBody {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("FnBody", ctx),
-            children: arena.children_builder().children(&self.args).child(&self.body).finish(),
+            children: arena.child_builder().children(&self.args).child(&self.body).finish(),
         }
     }
 }
@@ -242,7 +283,7 @@ impl ToFormattingNode for OpDef {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("OpDef", ctx),
-            children: arena.children_builder().child(&self.parts).child(&self.bindings).finish(),
+            children: arena.child_builder().child(&self.parts).child(&self.bindings).finish(),
         }
     }
 }
@@ -266,7 +307,7 @@ impl ToFormattingNode for OpBinding {
     ) -> FormattingNode<'arena> {
         FormattingNode {
             text: arena.name_and_context("OpBinding", ctx),
-            children: arena.children_builder().child(&self.lhs).child(&self.arrow).child(&self.rhs).finish(),
+            children: arena.child_builder().child(&self.lhs).child(&self.arrow).child(&self.rhs).finish(),
         }
     }
 }
@@ -280,10 +321,7 @@ impl ToFormattingNode for OpArrow {
             Self::Left => "OpArrowLeft",
             Self::Right => "OpArrowRight",
         };
-        FormattingNode {
-            text: arena.name_and_context(name, ctx),
-            children: Children::Never,
-        }
+        arena.unit(name, ctx)
     }
 }
 impl ToFormattingNode for OpParts {

@@ -2,8 +2,8 @@ use crate::{
     parsed::Span,
     scope_tree::{
         ast::{
-            FnBody, FnDef, Ident, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome, Parsed,
-            Scope, UseStmt,
+            FnBody, FnDef, Ident, Item, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome,
+            Parsed, Scope, ScopeElement, UseStmt,
         },
         lex::{Lexer, Token, TokenKind},
     },
@@ -54,26 +54,19 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
         self.spanning(|parser| parser.raw_parse_scope())
     }
     fn raw_parse_scope(&mut self) -> Outcome<Scope> {
-        let mut uses = Vec::new();
-        let mut fn_defs = Vec::new();
-        let mut children = Vec::new();
+        let mut contents = Vec::new();
         loop {
             select! { self, |tok, _|
-                peek: TokenKind::Use => uses.push(self.parse_use()),
-                peek: TokenKind::Fn => fn_defs.push(self.parse_fn_def()),
-                peek: TokenKind::OpenParen => children.push(self.parse_delimited_scope()),
+                peek: TokenKind::Use => contents.push(ScopeElement::Item(self.parse_use().map(Item::UseStmt))),
+                peek: TokenKind::Fn => contents.push(ScopeElement::Item(self.parse_fn_def().map(Item::FnDef))),
+                peek: TokenKind::OpenParen => contents.push(ScopeElement::Child(self.parse_delimited_scope())),
                 next: TokenKind::Eof => break,
                 // RECOVERY: Check for misspellings of `fn`, like `function` or `func` or `def` or `defun`
                 // RECOVERY: Check for other kinds of parentheses, like `{}`
-                next: _ => (),
+                next: _ => contents.push(ScopeElement::Atom(tok)),
             }
         }
-        Outcome::Valid(Scope {
-            uses,
-            fn_defs,
-            children,
-            tokentrees: Vec::new(), // FIXME actually parse these
-        })
+        Outcome::Valid(Scope(contents))
     }
     #[macro_rules_attribute(trace)]
     fn parse_use(&mut self) -> Parsed<UseStmt> {
