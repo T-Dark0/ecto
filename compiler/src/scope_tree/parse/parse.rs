@@ -91,17 +91,16 @@ impl<'source, H: TokenHandler> Parser<'source, H> {
     }
     #[macro_rules_attribute(trace)]
     fn parse_ident(&mut self) -> Parsed<Ident> {
-        let ident = self.next();
-        match ident.kind {
-            TokenKind::Ident => Parsed::valid(ident.span, Ident),
-            _ if resembles_ident(ident.kind) => {
-                self.unexpected(&[TokenKind::Ident], ident);
+        select! { self, |ident, expected|
+            next: TokenKind::Ident => Parsed::valid(ident.span, Ident),
+            next: _ if resembles_ident(ident.kind) => {
+                self.unexpected(expected, ident);
                 Parsed::recovered(ident.span, Ident)
-            }
-            _ => {
-                self.unexpected(&[TokenKind::Ident], ident);
+            },
+            next: _ => {
+                self.unexpected(expected, ident);
                 Parsed::error(ident.span, NodeKind::Ident)
-            }
+            },
         }
     }
     #[macro_rules_attribute(trace)]
