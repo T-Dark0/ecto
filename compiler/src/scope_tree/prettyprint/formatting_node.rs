@@ -1,5 +1,5 @@
 use crate::{
-    parsed::{Span, Validity},
+    parsed::Span,
     scope_tree::{
         ast::{
             FnBody, FnDef, Ident, Item, NodeKind, OpArrow, OpBinding, OpBindings, OpDef, OpPart, OpParts, Outcome,
@@ -54,6 +54,11 @@ impl NodeContext {
             validity: Validity::Recovered,
         }
     }
+}
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Validity {
+    Valid,
+    Recovered,
 }
 
 #[derive(Clone, Copy)]
@@ -147,7 +152,7 @@ impl<'of, 'arena> ChildBuilder<'of, 'arena> {
     where
         F: FnOnce(&mut FormattingArena<'arena>) -> FormattingNode<'arena>,
     {
-        let child = f(&mut self.arena);
+        let child = f(self.arena);
         self.arena.children_scratch_buffer.push(child);
         self
     }

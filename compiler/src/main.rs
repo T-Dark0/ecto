@@ -29,7 +29,7 @@ fn prettyprint<I: Iterator<Item = String>>(args: &mut I) -> Result<(), Error> {
     let file = args.next().ok_or(Error::InsufficientArguments)?;
     let source = fs::read_to_string(&file).map_err(Error::Io)?;
     let (parsed, errors) = scope_tree::parse(&source);
-    println!("{parsed:?}\n{errors:#?}");
+    println!("{}\n{:#?}", parsed.render(), errors);
     Ok(())
 }
 

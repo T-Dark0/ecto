@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Debug, Display},
-    ops::Range,
-};
+use std::fmt::{self, Debug, Display};
 
 #[derive(Debug, Eq, Clone, Copy)]
 pub struct Parsed<T, E> {
@@ -13,12 +10,6 @@ pub enum Outcome<T, E> {
     Valid(T),
     Recovered(T),
     Error(E),
-}
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Validity {
-    Valid,
-    Recovered,
-    Error,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -64,7 +55,6 @@ impl<T, E> Parsed<T, E> {
             Outcome::Error(k) => Parsed::error(self.span, k.clone()),
         }
     }
-    #[cfg_attr(not(test), expect(dead_code, reason = "only used in tests"))]
     pub fn render(&self) -> Render<'_, T, E> {
         Render(self)
     }
@@ -104,12 +94,6 @@ impl Span {
     pub fn new(start: u32, len: u16) -> Self {
         Self { start, len }
     }
-    pub fn from_usize_range(range: Range<usize>) -> Self {
-        Self {
-            start: range.start as u32,
-            len: (range.end - range.start) as u16,
-        }
-    }
     pub fn around(self, rhs: Self) -> Self {
         let end = rhs.start + u32::from(rhs.len);
         Self {
@@ -128,10 +112,6 @@ impl Span {
             start: self.start,
             len: 0,
         }
-    }
-    #[cfg_attr(not(test), expect(dead_code, reason = "only used in tests"))]
-    pub fn to_usize_range(self) -> Range<usize> {
-        self.start as usize..(self.start + u32::from(self.len)) as usize
     }
 }
 impl Debug for Span {
